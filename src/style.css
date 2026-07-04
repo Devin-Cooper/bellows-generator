@@ -343,7 +343,10 @@ body {
   color: var(--accent-contrast);
 }
 
-.btn-accent:hover { filter: brightness(1.06); }
+.btn-accent:hover {
+  background: var(--accent);
+  filter: brightness(1.06);
+}
 
 .toggle {
   display: inline-flex;
