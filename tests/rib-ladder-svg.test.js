@@ -86,4 +86,16 @@ describe('renderRibLadderSVG — connected outline (P0)', () => {
     expect(svg.startsWith('<svg')).toBe(true);
     expect(/width="[\d.]+mm"/.test(svg)).toBe(true);
   });
+
+  it('floors connector tabs to >=1mm so lattice never severs at cornerAllowance=0', () => {
+    const { svg, params } = ladder({ frontW: 160, frontH: 115, cornerAllowance: 0 });
+    const dW = ladderPaths(svg, 'W')[0].d;
+    const bb = outerBBox(dW);
+    const subs = dW.split('Z').filter((s) => s.trim().length);
+    const notch = subs[1].match(/-?[\d.]+/g).map(Number);
+    const notchXs = notch.filter((_, i) => i % 2 === 0);
+    // floor(max(1, min(2, 0))) = 1, so each rail must be 1 + kerf
+    expect(Math.min(...notchXs) - bb.minX).toBeCloseTo(1 + params.kerf, 4);  // left tab floored
+    expect(bb.maxX - Math.max(...notchXs)).toBeCloseTo(1 + params.kerf, 4);  // right tab floored
+  });
 });

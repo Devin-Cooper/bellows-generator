@@ -74,6 +74,12 @@ export function renderPatternSVG(model, params) {
  * Offset an axis-aligned polygon relative to its own bbox centre.
  * delta > 0 grows OUTWARD (laser kerf on an outer cut), delta < 0 shrinks INWARD
  * (kerf on an interior notch). No clipping library needed.
+ *
+ * KNOWN LIMITATION (accepted, within +-0.3mm target): on tapered columns this
+ * bbox-centre offset pushes ribs narrower than half the widest rib inward by
+ * ~1 kerf (~0.15mm undersize). Straight/rectangular columns are exact. Tapered
+ * is experimental; revisit with a per-edge normal offset if tapered precision
+ * is tightened.
  */
 function offsetFromCentre(points, delta) {
   const xs = points.map((p) => p.x);
@@ -107,7 +113,8 @@ function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
   const pit = rib + gap;
   const half = kerf / 2;
-  const tabW = Math.min(2, params.cornerAllowance);
+  // floor at 1mm so the lattice never severs, even at cornerAllowance=0 (guards the original P0)
+  const tabW = Math.max(1, Math.min(2, params.cornerAllowance));
   const N = ribs.length;
 
   const rows = ribs.map((s, r) => {
