@@ -34,11 +34,11 @@ const WALL_FACES = ['W', 'H', 'W', 'H'];
  * left — every corner is shared by exactly two adjacent walls (label + paper-fold
  * key).
  *
- * PROVISIONAL / paper-fold-gated: this engine currently implements cornerMode
- * 'clear' only, so the corner-adjacent rib END is a square edge (rectangle). The
- * exact 45deg bevel for 'pointed'/'alternating' (Harlin: adjacent walls' end-angles
- * sum to 90deg on a square) is empirically gated on a printed paper fold and is
- * added in Phase 5 — it is intentionally NOT encoded here.
+ * PROVISIONAL / paper-fold-gated: this engine implements cornerMode 'clear'
+ * (square edge), 'pointed' (symmetric 45deg apex at both ends), and 'alternating'
+ * (apex on even (wallIndex+ribIndex) parity). The exact bevel for 'pointed'/
+ * 'alternating' (Harlin: adjacent walls' end-angles sum to 90deg on a square)
+ * is empirically gated on a printed paper fold.
  *
  * @param {Object} params  Normalized or raw params (computeFaceFoldWidths normalizes).
  * @returns {import('./types.js').RibShape[]}
@@ -97,9 +97,9 @@ export function cornerPointReach(depth, cornerAllowance) {
 
 /**
  * Decide whether a rib's left/right corner-adjacent ends carry a 45deg point.
- *   clear     -> neither end (rectangle)
- *   pointed   -> both corner ends (the four-wall ring points into every corner)
- *   (alternating handled in the next task)
+ *   clear       -> neither end (rectangle)
+ *   pointed     -> both corner ends (the four-wall ring points into every corner)
+ *   alternating -> even (wallIndex+ribIndex) parity pointed, odd clear
  * @param {'clear'|'pointed'|'alternating'} cornerMode
  * @param {number} wallIndex
  * @param {number} ribIndex

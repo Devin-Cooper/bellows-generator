@@ -31,6 +31,23 @@ describe('ribPolygon', () => {
     expect(right.x - 120).toBe(12 / 2);        // 45deg: x-reach === depth/2
     expect(right.y).toBe(12 / 2);              // apex on the rib y-midline
     expect(left.x).toBeLessThan(0);            // reaches toward the left corner
+    expect(left.x).toBeCloseTo(-6, 6);         // symmetric: -reach = -(depth/2)
+    expect(left.y).toBeCloseTo(6, 6);          // apex on the rib y-midline
+  });
+  it('clamps the apex to the corner line (ABUT, not cross) when depth/2 exceeds cornerAllowance', () => {
+    // width=120, depth=40, cornerAllowance=15: depth/2=20 > ca=15, so reach clamps to 15
+    const reach = cornerPointReach(40, 15);
+    expect(reach).toBe(15);                                        // clamp engaged
+    const pts = ribPolygon(120, 40, { leftPointed: true, rightPointed: true }, reach);
+    const right = pts.find((p) => p.x > 120);
+    const left = pts.find((p) => p.x < 0);
+    // Right apex ABUTs the corner line at x=120+15=135, NOT x=120+20=140 (would cross)
+    expect(right.x).toBeCloseTo(120 + 15, 6);  // 135: abuts corner line
+    expect(right.x).not.toBeCloseTo(140, 1);   // 140 = width+depth/2: would cross corner line
+    expect(right.y).toBeCloseTo(20, 6);        // depth/2
+    // Left apex symmetric
+    expect(left.x).toBeCloseTo(-15, 6);        // -reach (clamped), not -20
+    expect(left.y).toBeCloseTo(20, 6);         // depth/2
   });
   it('only the right end pointed -> 5 points; left edge stays flat', () => {
     const pts = ribPolygon(120, 12, { leftPointed: false, rightPointed: true }, 6);

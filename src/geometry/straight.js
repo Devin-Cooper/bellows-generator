@@ -100,9 +100,8 @@ export function buildStraightPattern(params) {
     // width = faceWidth - 2*ca from the engine; the split-W half columns (0 & 4) show
     // shape.width/2 flush to the seam, full columns are centred. y-band comes from the
     // engine's DATUM-RELATIVE yBand PLUS the fabric endMargin origin, so the fabric
-    // underlay overlays the laser ladder 1:1. In clear mode the canonical rib IS this
-    // inset rectangle; phase 5 swaps in the full canonical polygon (shape.points) so
-    // pointed/alternating corner ends flow through here.
+    // underlay overlays the laser ladder 1:1. Footprints already route shape.points so
+    // pointed/alternating corner ends flow through here with no extra handling needed.
     const isHalf = f === 0 || f === 4;
     for (let r = 0; r < ribCount; r++) {
       const shape = shapeFor(faceType[f], r);

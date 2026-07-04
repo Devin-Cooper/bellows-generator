@@ -20,6 +20,8 @@ describe('computeRibShapes cornerMode=pointed', () => {
       expect(left).toBeTruthy();
       expect(right.x - s.width).toBeCloseTo(depth / 2);   // 45deg construction rule
       expect(right.y).toBeCloseTo(depth / 2);
+      expect(left.x).toBeCloseTo(-(depth / 2), 6);        // symmetric: -reach = -(depth/2)
+      expect(left.y).toBeCloseTo(depth / 2, 6);           // apex on the rib y-midline
     }
   });
 

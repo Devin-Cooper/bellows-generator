@@ -81,12 +81,12 @@ export function buildTaperedPattern(params) {
   const ribShapes = computeRibShapes(p);
   const shapeFor = (kind, i) => ribShapes.find((s) => s.face === kind && s.ribIndex === i);
 
-  // transverse rib footprints (ENGRAVE): true INSET rectangles per pleat, re-derived from
+  // transverse rib footprints (ENGRAVE): true INSET polygons per pleat, re-derived from
   // computeRibShapes (fixes P3b's open centreline ticks). width = per-pleat faceWidth - 2*ca
   // from the engine (honours taper); the split-W edge columns (0 & 4) show shape.width/2.
-  // Rectangles are centred on the rear-based column centre, matching the existing trapezoid
+  // Polygons are centred on the rear-based column centre, matching the existing trapezoid
   // layout, and use the engine yBand PLUS the endMargin origin so they register to the
-  // ladder. Phase 5 swaps in the canonical polygon (shape.points) for pointed/alternating ends.
+  // ladder. Footprints already route shape.points so pointed/alternating ends flow through.
   for (let i = 0; i < n; i++) {
     for (let c = 0; c < faceKinds.length; c++) {
       const shape = shapeFor(faceKinds[c], i);
