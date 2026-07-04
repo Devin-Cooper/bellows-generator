@@ -122,11 +122,22 @@ function traceColumn(ribs, colX0, datum, params) {
     return { xL: colX0, xR: colX0 + s.width, yTop, yBot: yTop + rib, shape: s };
   });
 
-  // Left rail straight down, then up the right side following each rib edge + tab jogs.
-  const outer = [
-    { x: rows[0].xL, y: rows[0].yTop },
-    { x: rows[N - 1].xL, y: rows[N - 1].yBot },
-  ];
+  // Down the LEFT side following each rib edge (+ left-apex jog for pointed/alternating),
+  // then up the RIGHT side following each rib edge (+ right-apex jog) + tab jogs. Between
+  // ribs the left boundary stays at colX0 (next iteration's yTop continues the rail), so
+  // clear mode (no apex) yields the same straight left rail as before — no redundant push.
+  const outer = [];
+  for (let r = 0; r < N; r++) {
+    const s = rows[r].shape;
+    const leftApex = s.points.find((p) => p.x < 0); // pointed/alternating outer apex (x < 0)
+    outer.push({ x: rows[r].xL, y: rows[r].yTop });
+    if (leftApex) {
+      // left rail follows the canonical polygon out to the 45deg apex on the y-midline
+      // (leftApex.x is negative → colX0 - reach, the outward protrusion toward the corner)
+      outer.push({ x: rows[r].xL + leftApex.x, y: rows[r].yTop + rib / 2 });
+    }
+    outer.push({ x: rows[r].xL, y: rows[r].yBot });
+  }
   for (let r = N - 1; r >= 0; r--) {
     const s = rows[r].shape;
     const rightApex = s.points.find((p) => p.x > s.width); // pointed/alternating outer apex
