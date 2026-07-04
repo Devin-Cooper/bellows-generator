@@ -4,7 +4,7 @@ import { renderPatternSVG, renderRibLadderSVG } from '../render/svg.js';
 import { BellowsViewer } from '../render/three.js';
 import { buildControlPanel } from './controls.js';
 import { buildAppShell } from './appShell.js';
-import { mountPreview } from './preview.js';
+import { mountPreview, buildPreviewToolbar } from './preview.js';
 import { makeSVGBlob, downloadBlob, triggerDownload } from '../export/download.js';
 import { exportTiledPDF } from '../export/pdf.js';
 import { exportRibsSTL } from '../export/stl.js';
@@ -64,6 +64,29 @@ export function initApp(rootEl) {
   rootEl.appendChild(shell.root);
 
   const viewer = new BellowsViewer(canvas);
+
+  // Layer/grid/reset toolbar. doRecompute destroys + re-mounts previewApi on
+  // every change, so the toolbar buttons must route through this stable proxy
+  // (always forwarding to the *current* previewApi) rather than closing over one
+  // instance.
+  const previewProxy = {
+    toggleLayer: (type) => previewApi?.toggleLayer(type),
+    setGridVisible: (v) => previewApi?.setGridVisible(v),
+    resetView: () => previewApi?.resetView(),
+  };
+  const previewToolbar = buildPreviewToolbar(previewProxy, {
+    layers: [
+      { type: 'CUT', label: 'Cuts' },
+      { type: 'GLUE_TAB', label: 'Glue tabs' },
+      { type: 'FOLD_MOUNTAIN', label: 'Mountain folds' },
+      { type: 'FOLD_VALLEY', label: 'Valley folds' },
+      { type: 'ENGRAVE', label: 'Engrave' },
+    ],
+    showGrid: true,
+  });
+  // Mount before svgHost so mountPreview's svgHost.innerHTML re-render never
+  // wipes the toolbar (it lives in the same .preview-panel, as a sibling).
+  svgHost.insertAdjacentElement('beforebegin', previewToolbar);
 
   // Wire slider after viewer is created so the closure resolves correctly.
   slider.addEventListener('input', () => {

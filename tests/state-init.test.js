@@ -34,8 +34,14 @@ vi.mock('../src/ui/preview.js', () => ({
     return {
       toggleLayer: vi.fn(),
       setGridVisible: vi.fn(),
+      resetView: vi.fn(),
       destroy: vi.fn(),
     };
+  }),
+  buildPreviewToolbar: vi.fn(() => {
+    const bar = document.createElement('div');
+    bar.className = 'preview-toolbar';
+    return bar;
   }),
 }));
 vi.mock('../src/export/download.js', () => ({
