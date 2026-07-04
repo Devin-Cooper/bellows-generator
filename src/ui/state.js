@@ -19,6 +19,10 @@ export function debounce(fn, ms) {
   };
 }
 
+export function formatExtensionLabel(value) {
+  return `Extension ${Math.round(value * 100)}%`;
+}
+
 function readHintsOn() {
   try {
     const v = localStorage.getItem(HINTS_KEY);
@@ -89,9 +93,15 @@ export function initApp(rootEl) {
   svgHost.insertAdjacentElement('beforebegin', previewToolbar);
 
   // Wire slider after viewer is created so the closure resolves correctly.
+  const extLabel = document.createElement('span');
+  extLabel.className = 'extension-label';
+  extLabel.textContent = formatExtensionLabel(Number(slider.value));
+  slider.insertAdjacentElement('afterend', extLabel);
+
   slider.addEventListener('input', () => {
     viewer.params = params; // always push latest params before rebuilding (fix: stale-params bug)
     extension = Number(slider.value);
+    extLabel.textContent = formatExtensionLabel(extension);
     viewer.setExtension(extension);
   });
 
