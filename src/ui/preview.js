@@ -1,40 +1,24 @@
-export const PAGE_SIZES = {
-  A4: { w: 210, h: 297 },
-  A3: { w: 297, h: 420 },
-  Letter: { w: 215.9, h: 279.4 },
-};
+export { PAGE_SIZES } from '../tiling.js';
+import { planTiles, TILE_MARGIN_MM } from '../tiling.js';
 
 /**
- * Lay printable page tiles over the flat sheet. Adjacent tiles overlap by `overlap`
- * mm, so each new tile advances by stride = pageDim - overlap.
+ * Lay printable page tiles over the flat sheet using the canonical two-sided-margin
+ * model (stride = pageDim - 2*TILE_MARGIN_MM per axis). Delegates to planTiles so
+ * the on-screen page overlay always agrees with the PDF exporter.
+ *
+ * The `overlap` parameter is kept for signature back-compatibility but is ignored;
+ * the returned `overlap` field is always TILE_MARGIN_MM (10 mm).
  */
-export function computePageGrid(bounds, pageSize, overlap = 10) {
-  const key = pageSize in PAGE_SIZES ? pageSize : 'A4';
-  const page = PAGE_SIZES[key];
-  const strideX = page.w - overlap;
-  const strideY = page.h - overlap;
-  const cols = Math.max(1, Math.ceil((bounds.w - overlap) / strideX));
-  const rows = Math.max(1, Math.ceil((bounds.h - overlap) / strideY));
-
-  const tiles = [];
-  let index = 0;
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      tiles.push({
-        index,
-        page: index + 1,
-        col,
-        row,
-        x: col * strideX,
-        y: row * strideY,
-        w: page.w,
-        h: page.h,
-      });
-      index++;
-    }
-  }
-
-  return { pageSize: key, overlap, cols, rows, count: cols * rows, tiles };
+export function computePageGrid(bounds, pageSize, overlap = 10) {  // eslint-disable-line no-unused-vars
+  const plan = planTiles(bounds, pageSize);
+  return {
+    pageSize: plan.pageSize,
+    overlap: TILE_MARGIN_MM,
+    cols: plan.cols,
+    rows: plan.rows,
+    count: plan.count,
+    tiles: plan.tiles,
+  };
 }
 
 const fmt = (n) => String(Math.round(n * 1e4) / 1e4);

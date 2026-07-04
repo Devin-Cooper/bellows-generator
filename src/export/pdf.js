@@ -1,12 +1,12 @@
 // src/export/pdf.js
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { LAYER_COLORS } from '../constants.js';
+import { planTiles, TILE_MARGIN_MM } from '../tiling.js';
 
 export const MM_TO_PT = 72 / 25.4; // 2.834645669...
 export const CALIBRATION_MM = 50;
 export const CALIBRATION_IN = 1;
 const IN_TO_PT = 72;
-const OVERLAP_MM = 10;
 
 const PAGE_DIMS_PT = {
   A4: { w: 210 * MM_TO_PT, h: 297 * MM_TO_PT },
@@ -19,15 +19,13 @@ export function pageDimsPt(pageSize) {
 }
 
 export function computePageGrid(bounds, params) {
+  // Derive cols/rows from the canonical mm helper so preview and PDF always agree.
+  const plan = planTiles(bounds, params.pageSize);
   const page = pageDimsPt(params.pageSize);
-  const marginPt = OVERLAP_MM * MM_TO_PT;
+  const marginPt = TILE_MARGIN_MM * MM_TO_PT;
   const stepX = page.w - 2 * marginPt;
   const stepY = page.h - 2 * marginPt;
-  const contentW = bounds.w * MM_TO_PT;
-  const contentH = bounds.h * MM_TO_PT;
-  const cols = Math.max(1, Math.ceil(contentW / stepX));
-  const rows = Math.max(1, Math.ceil(contentH / stepY));
-  return { cols, rows, pageCount: cols * rows, stepX, stepY, marginPt, page };
+  return { cols: plan.cols, rows: plan.rows, pageCount: plan.count, stepX, stepY, marginPt, page };
 }
 
 function hexToRgb(hex) {
