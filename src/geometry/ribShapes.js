@@ -102,7 +102,14 @@ export function cornerPointReach(depth, cornerAllowance) {
  */
 export function cornerModeEnds(cornerMode, wallIndex, ribIndex) {
   if (cornerMode === 'pointed') return { leftPointed: true, rightPointed: true };
-  return { leftPointed: false, rightPointed: false }; // clear (and, for now, alternating)
+  if (cornerMode === 'alternating') {
+    // Point the rib on even (wallIndex + ribIndex) parity, clear on odd:
+    // adjacent walls alternate at a pleat, and each wall alternates down the draw,
+    // so only ~half the ribs add corner bulk (Photrio trapezoidal middle ground).
+    const pointed = ((wallIndex + ribIndex) % 2) === 0;
+    return { leftPointed: pointed, rightPointed: pointed };
+  }
+  return { leftPointed: false, rightPointed: false }; // clear
 }
 
 /**
