@@ -60,4 +60,18 @@ describe('buildControlPanel', () => {
     expect(el.querySelectorAll('.readout').length).toBe(6);
     expect(el.querySelector('.readout.warn')).not.toBeNull();
   });
+
+  it('a single input event on a number field fires onChange exactly once', () => {
+    const onChange = vi.fn();
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS }, onChange });
+    const frontW = el.querySelector('[data-key="frontW"]');
+    frontW.dispatchEvent(new Event('input'));
+    expect(onChange.mock.calls.length).toBe(1);
+  });
+
+  it('submit event on the form is prevented', () => {
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    const prevented = !el.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(prevented).toBe(true);
+  });
 });

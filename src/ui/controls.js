@@ -57,6 +57,7 @@ export function buildControlPanel(opts = {}) {
 
   const el = document.createElement('form');
   el.className = 'controls';
+  el.addEventListener('submit', (e) => e.preventDefault());
   const inputs = {};
 
   for (const group of GROUPS) {
@@ -82,8 +83,7 @@ export function buildControlPanel(opts = {}) {
         if (field.step) input.step = String(field.step);
       }
       input.dataset.key = field.key;
-      input.addEventListener('input', handleInput);
-      input.addEventListener('change', handleInput);
+      input.addEventListener(field.kind === 'select' ? 'change' : 'input', handleInput);
       inputs[field.key] = input;
       label.appendChild(input);
       fs.appendChild(label);
