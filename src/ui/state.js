@@ -67,7 +67,20 @@ export function initApp(rootEl) {
   const { panelHost, svgHost, canvas, slider } = shell;
   rootEl.appendChild(shell.root);
 
-  const viewer = new BellowsViewer(canvas);
+  let viewer;
+  try {
+    viewer = new BellowsViewer(canvas);
+  } catch (_err) {
+    viewer = { params: null, setFoldModel() {}, setExtension() {}, resize() {}, dispose() {} };
+    const threePanel = shell.root.querySelector('.preview-panel[data-view="3d"]');
+    if (threePanel) {
+      const msg = document.createElement('p');
+      msg.className = 'preview-unavailable';
+      msg.textContent =
+        '3D preview unavailable — your browser or device couldn’t create a WebGL context. The flat pattern and all exports still work.';
+      threePanel.appendChild(msg);
+    }
+  }
 
   // Layer/grid/reset toolbar. doRecompute destroys + re-mounts previewApi on
   // every change, so the toolbar buttons must route through this stable proxy
