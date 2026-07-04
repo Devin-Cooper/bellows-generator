@@ -119,4 +119,19 @@ describe('mountPreview', () => {
     api.destroy();
     expect(el.innerHTML).toBe('');
   });
+
+  it('aborts all listener signals on destroy', () => {
+    const signals = [];
+    const el = {
+      innerHTML: '',
+      addEventListener(_type, _fn, opts) {
+        if (opts?.signal) signals.push(opts.signal);
+      },
+    };
+    const api = mountPreview(el, previewOptions());
+    expect(signals.length).toBe(4);
+    signals.forEach((s) => expect(s.aborted).toBe(false));
+    api.destroy();
+    signals.forEach((s) => expect(s.aborted).toBe(true));
+  });
 });

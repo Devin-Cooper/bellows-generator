@@ -92,6 +92,7 @@ export function mountPreview(container, options) {
   const grid = computePageGrid(bounds, params.pageSize, options.overlap ?? 10);
   const opts = { patternSVG, bounds, grid };
   const state = { zoom: 1, panX: 0, panY: 0, hidden: new Set(), showGrid: true };
+  const ac = new AbortController();
   const render = () => {
     container.innerHTML = composePreview(opts, state);
   };
@@ -101,7 +102,7 @@ export function mountPreview(container, options) {
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
     state.zoom = Math.max(0.1, Math.min(20, state.zoom * factor));
     render();
-  });
+  }, { signal: ac.signal });
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
@@ -109,7 +110,7 @@ export function mountPreview(container, options) {
     dragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
-  });
+  }, { signal: ac.signal });
   container.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     state.panX += e.clientX - lastX;
@@ -117,10 +118,10 @@ export function mountPreview(container, options) {
     lastX = e.clientX;
     lastY = e.clientY;
     render();
-  });
+  }, { signal: ac.signal });
   container.addEventListener('mouseup', () => {
     dragging = false;
-  });
+  }, { signal: ac.signal });
 
   render();
 
@@ -153,6 +154,7 @@ export function mountPreview(container, options) {
       };
     },
     destroy() {
+      ac.abort();
       container.innerHTML = '';
     },
   };
