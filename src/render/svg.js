@@ -231,6 +231,32 @@ export function renderRibLadderSVG(model, params) {
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_VALLEY}" ` +
     `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spineMarks}</g>`;
 
+  const labelMarks = columns
+    .map((col) => {
+      const wall = shapes.find((s) => s.face === col.face);
+      const colShapes = shapes
+        .filter((s) => s.face === col.face && s.wallIndex === wall.wallIndex)
+        .sort((a, b) => a.ribIndex - b.ribIndex);
+      const cx = col.x0 + col.width / 2;
+      return colShapes
+        .map((s) => {
+          const ty = datum + s.ribIndex * pitch + rib / 2;
+          const corner = `L${f(s.cornerShare.leftCorner)}/R${f(s.cornerShare.rightCorner)}`;
+          return (
+            `<text data-role="rib-label" data-index="${s.ribIndex}" ` +
+            `data-face="${s.face}" data-corner="${corner}" ` +
+            `x="${f(cx)}" y="${f(ty)}" font-size="2.5" text-anchor="middle">` +
+            `${s.ribIndex}${s.face} ${corner}</text>`
+          );
+        })
+        .join('');
+    })
+    .join('');
+
+  const engraveGroup =
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${labelMarks}</g>`;
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
@@ -245,6 +271,7 @@ export function renderRibLadderSVG(model, params) {
     notes.join('') +
     `</g>` +
     spineGroup +
+    engraveGroup +
     `</svg>`
   );
 }
