@@ -205,9 +205,21 @@ export function renderRibLadderSVG(model, params) {
         { face: 'H', label: 'H', ribs: hRibs, qty: 2 },
       ];
 
+  // Reserve room for the left apex protrusion so it stays on-sheet.
+  // In pointed/alternating mode traceColumn places the left apex at colX0 + leftApex.x
+  // (leftApex.x = -reach < 0). After kerf grow the rendered minX = colX0 - reach - kerf/2.
+  // With reach=6 and margin=5 this lands at -1 (off-sheet). Shift colX0 right by leftPad
+  // (= reach for uniform ribs) so the rendered left apex lands exactly at margin.
+  // Clear mode: no left apex → leftPad=0 → byte-identical layout.
+  const allRibs = [...wRibs, ...hRibs];
+  const anyLeftApex = allRibs.some((s) => s.points.some((p) => p.x < 0));
+  const leftPad = anyLeftApex
+    ? Math.max(...allRibs.map((s) => { const la = s.points.find((p) => p.x < 0); return la ? -la.x : 0; }))
+    : 0;
+
   const cutPaths = [];
   const notes = [];
-  let colX0 = margin + kerf / 2;
+  let colX0 = margin + kerf / 2 + leftPad;
   let maxRight = 0;
 
   for (const col of columns) {
