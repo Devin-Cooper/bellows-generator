@@ -20,6 +20,28 @@ function isEdgeManifold(indices) {
   return [...counts.values()].every((n) => n === 2);
 }
 
+/** Returns true when the mesh is a consistently-oriented closed manifold:
+ *  every directed edge (u->v) appears exactly once, and its reverse (v->u)
+ *  also appears exactly once. Detects flipped caps that the undirected
+ *  edge-manifold test cannot catch.
+ */
+function isOrientedManifold(indices) {
+  const dir = new Map();
+  const k = (a, b) => `${a}_${b}`;
+  for (let i = 0; i < indices.length; i += 3) {
+    const [a, b, c] = [indices[i], indices[i + 1], indices[i + 2]];
+    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+      dir.set(k(u, v), (dir.get(k(u, v)) || 0) + 1);
+    }
+  }
+  for (const [key, n] of dir) {
+    if (n !== 1) return false;                          // each directed edge exactly once
+    const [u, v] = key.split('_');
+    if ((dir.get(k(v, u)) || 0) !== 1) return false;   // its reverse exactly once
+  }
+  return true;
+}
+
 function zExtent(positions) {
   let min = Infinity;
   let max = -Infinity;
@@ -72,6 +94,13 @@ describe('buildFoldModel', () => {
     for (const t of [0, 0.5, 1]) {
       const m = buildFoldModel(DEFAULT_PARAMS, t);
       expect(isEdgeManifold(m.indices)).toBe(true);
+    }
+  });
+
+  it('produces a consistently-oriented closed manifold (outward-facing caps) at every extension', () => {
+    for (const t of [0, 0.5, 1]) {
+      const m = buildFoldModel(DEFAULT_PARAMS, t);
+      expect(isOrientedManifold(m.indices)).toBe(true);
     }
   });
 });

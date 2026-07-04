@@ -25,11 +25,13 @@ export function buildFoldModel(params, t) {
 
   // Rib rings interleaved with ridge rings between each pair of ribs.
   const ringCount = 2 * ribCount - 1;
+  // segCount = ringCount - 1; Math.max(1, ...) is a guard but valid params require ribCount >= 2.
   const segCount = Math.max(1, ringCount - 1);
 
   // Cross-section half extents; the front opening drives the straight preview.
   const a = params.frontW / 2;
   const b = params.frontH / 2;
+  // Clamp miter to 90% of the half-extent so octagon vertices don't cross the centre line.
   const miter = Math.min(params.cornerAllowance, a * 0.9, b * 0.9);
 
   // Fixed material half-pitch (slant); radial peak collapses to 0 at full draw.
@@ -75,12 +77,16 @@ export function buildFoldModel(params, t) {
     }
   }
 
-  // End caps: fan-triangulate the terminal octagons (opposite winding).
+  // End caps: fan-triangulate the terminal octagons.
+  // Winding is REVERSED relative to the adjacent wall quads so that cap normals
+  // point outward (away from the tube interior), matching the wall normals.
+  // Each cap's boundary edges must run opposite to the wall boundary edges;
+  // reversing the winding achieves this for a CCW-from-+z tube.
   const first = 0;
   const last = (ringCount - 1) * V;
   for (let k = 1; k < V - 1; k++) {
-    indices.push(first, first + k, first + k + 1);
-    indices.push(last, last + k + 1, last + k);
+    indices.push(first, first + k + 1, first + k);
+    indices.push(last, last + k, last + k + 1);
   }
 
   return { positions, indices, axialLength, extension: clampedT };
