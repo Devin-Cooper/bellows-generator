@@ -145,6 +145,7 @@ export function buildControlPanel(opts = {}) {
 
   const readouts = document.createElement('div');
   readouts.className = 'readouts';
+  readouts.setAttribute('aria-live', 'polite');
   el.appendChild(readouts);
 
   function handleInput() {
