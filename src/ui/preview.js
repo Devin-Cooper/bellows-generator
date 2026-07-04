@@ -69,7 +69,7 @@ function composePreview(opts, state) {
   );
 }
 
-/** Mount a live flat preview: pattern SVG + page-grid overlay, with zoom/pan + layer toggles. */
+/** Mount a live flat preview: pattern SVG + page-grid overlay, with pointer pan/pinch + layer toggles. */
 export function mountPreview(container, options) {
   const { patternSVG, model, params } = options;
   const bounds = model.bounds;
@@ -80,32 +80,101 @@ export function mountPreview(container, options) {
   const render = () => {
     container.innerHTML = composePreview(opts, state);
   };
+  const clamp = (z) => Math.max(0.1, Math.min(20, z));
+  const resetView = () => {
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
+    render();
+  };
 
-  container.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    state.zoom = Math.max(0.1, Math.min(20, state.zoom * factor));
-    render();
-  }, { signal: ac.signal });
-  let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
-  container.addEventListener('mousedown', (e) => {
-    dragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-  }, { signal: ac.signal });
-  container.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    state.panX += e.clientX - lastX;
-    state.panY += e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    render();
-  }, { signal: ac.signal });
-  container.addEventListener('mouseup', () => {
-    dragging = false;
-  }, { signal: ac.signal });
+  const pointers = new Map(); // pointerId -> { x, y }
+  const downAt = new Map(); // pointerId -> { x, y } at pointerdown (drag-vs-tap)
+  let prevDist = 0; // last two-pointer distance
+  let lastTap = null; // { t, x, y } for double-tap detection
+  const rectOf = () =>
+    container.getBoundingClientRect ? container.getBoundingClientRect() : { left: 0, top: 0 };
+
+  // Wheel zoom (desktop) — unchanged behaviour.
+  container.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      state.zoom = clamp(state.zoom * factor);
+      render();
+    },
+    { signal: ac.signal }
+  );
+
+  container.addEventListener(
+    'pointerdown',
+    (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      downAt.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        prevDist = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+    },
+    { signal: ac.signal }
+  );
+
+  container.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      const prev = pointers.get(e.pointerId);
+      if (pointers.size === 1) {
+        state.panX += e.clientX - prev.x;
+        state.panY += e.clientY - prev.y;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        render();
+      } else if (pointers.size === 2) {
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const [a, b] = [...pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (prevDist > 0) {
+          const rect = rectOf();
+          const mx = (a.x + b.x) / 2 - rect.left;
+          const my = (a.y + b.y) / 2 - rect.top;
+          const next = clamp(state.zoom * (dist / prevDist));
+          const applied = next / state.zoom; // actual ratio after clamping
+          state.panX = mx - (mx - state.panX) * applied;
+          state.panY = my - (my - state.panY) * applied;
+          state.zoom = next;
+          render();
+        }
+        prevDist = dist;
+      }
+    },
+    { signal: ac.signal }
+  );
+
+  const endPointer = (e, allowTap) => {
+    const start = downAt.get(e.pointerId);
+    pointers.delete(e.pointerId);
+    downAt.delete(e.pointerId);
+    prevDist = 0; // re-seed pinch tracking when a finger lifts
+    if (!allowTap) return;
+    const moved = start ? Math.hypot(e.clientX - start.x, e.clientY - start.y) : Infinity;
+    if (moved >= 6) return; // a drag, not a tap
+    const now = e.timeStamp ?? Date.now();
+    if (
+      lastTap &&
+      now - lastTap.t < 300 &&
+      Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30
+    ) {
+      lastTap = null;
+      resetView();
+    } else {
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+  };
+
+  container.addEventListener('pointerup', (e) => endPointer(e, true), { signal: ac.signal });
+  container.addEventListener('pointercancel', (e) => endPointer(e, false), { signal: ac.signal });
+  container.addEventListener('dblclick', () => resetView(), { signal: ac.signal });
 
   render();
 
@@ -128,6 +197,7 @@ export function mountPreview(container, options) {
       state.showGrid = v;
       render();
     },
+    resetView,
     getState() {
       return {
         zoom: state.zoom,

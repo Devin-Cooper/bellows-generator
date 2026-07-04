@@ -129,7 +129,7 @@ describe('mountPreview', () => {
       },
     };
     const api = mountPreview(el, previewOptions());
-    expect(signals.length).toBe(4);
+    expect(signals.length).toBe(6);
     signals.forEach((s) => expect(s.aborted).toBe(false));
     api.destroy();
     signals.forEach((s) => expect(s.aborted).toBe(true));
