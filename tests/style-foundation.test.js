@@ -1,12 +1,8 @@
-// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-const cssUrl = new URL('../src/style.css', import.meta.url);
-const mainUrl = new URL('../src/main.js', import.meta.url);
-
 describe('style.css foundation', () => {
-  const css = () => readFileSync(cssUrl, 'utf8');
+  const css = () => readFileSync('src/style.css', 'utf8');
 
   it('defines the full :root token block', () => {
     const src = css();
@@ -61,8 +57,7 @@ describe('style.css foundation', () => {
   });
 
   it('main.js imports the stylesheet and loads without throwing', async () => {
-    expect(readFileSync(mainUrl, 'utf8')).toContain(`import "./style.css";`);
-    document.body.innerHTML = '';
+    expect(readFileSync('src/main.js', 'utf8')).toContain(`import "./style.css";`);
     await expect(import('../src/main.js')).resolves.toBeDefined();
   });
 });
