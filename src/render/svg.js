@@ -212,10 +212,10 @@ export function renderRibLadderSVG(model, params) {
   }
 
   const w = maxRight + margin;
-  const h = datum + (ribCount - 1) * pit + rib + kerf / 2 + margin;
-  const cut = LAYER.CUT;
-
+  const CALIBRATION_MM = 50; // 1:1 scale check — mirrors CALIBRATION_MM in export/pdf.js
   const stackH = (ribCount - 1) * pitch + rib;
+  const h = datum + stackH + margin + CALIBRATION_MM + margin;
+  const cut = LAYER.CUT;
 
   const spineMarks = columns
     .map((col) => {
@@ -253,9 +253,17 @@ export function renderRibLadderSVG(model, params) {
     })
     .join('');
 
+  const calX = margin;
+  const calY = datum + stackH + margin;
+  const calSquare =
+    `<rect data-role="calibration" x="${f(calX)}" y="${f(calY)}" ` +
+    `width="${f(CALIBRATION_MM)}" height="${f(CALIBRATION_MM)}"/>` +
+    `<text data-role="calibration-label" x="${f(calX)}" y="${f(calY - 1)}" ` +
+    `font-size="3">${CALIBRATION_MM} mm</text>`;
+
   const engraveGroup =
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
-    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${labelMarks}</g>`;
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${labelMarks}${calSquare}</g>`;
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
