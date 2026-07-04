@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Generated at build time by rollup-plugin-license
+THIRD_PARTY_NOTICES.md
+
+# Logs & OS cruft
+npm-debug.log*
+*.log
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
