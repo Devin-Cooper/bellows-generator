@@ -1,4 +1,6 @@
 import { renderPatternSVG, renderRibLadderSVG } from '../render/svg.js';
+import { exportTiledPDF } from './pdf.js';
+import { exportRibsSTL } from './stl.js';
 
 /**
  * Wrap an SVG string in a Blob for download. Pure — no DOM access.
@@ -63,4 +65,44 @@ export function attachSVGExportButtons({
     const svg = ladderRenderer(getModel(), getParams());
     downloadBlob(makeSVGBlob(svg), 'bellows-rib-ladder.svg', { doc, urlLib });
   });
+}
+
+export function triggerDownload(data, filename, mimeType) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return filename;
+}
+
+export function wireExportButtons(container, getModel, getParams) {
+  const pdfBtn = document.createElement('button');
+  pdfBtn.textContent = 'Export PDF';
+  pdfBtn.className = 'export-pdf';
+  pdfBtn.addEventListener('click', async () => {
+    pdfBtn.disabled = true;
+    try {
+      const bytes = await exportTiledPDF(getModel(), getParams());
+      triggerDownload(bytes, 'bellows-pattern.pdf', 'application/pdf');
+    } finally {
+      pdfBtn.disabled = false;
+    }
+  });
+
+  const stlBtn = document.createElement('button');
+  stlBtn.textContent = 'Export Rib STL';
+  stlBtn.className = 'export-stl';
+  stlBtn.addEventListener('click', () => {
+    const buf = exportRibsSTL(getModel(), getParams());
+    triggerDownload(buf, 'bellows-ribs.stl', 'model/stl');
+  });
+
+  container.appendChild(pdfBtn);
+  container.appendChild(stlBtn);
+  return { pdfBtn, stlBtn };
 }
