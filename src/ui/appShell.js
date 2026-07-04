@@ -226,10 +226,40 @@ export function buildAppShell(opts = {}) {
   }
 
   function setActiveView(view) {
-    if (view === activeView) return;
+    const changed = view !== activeView;
     activeView = view;
-    applyActiveClasses();
-    onViewChange(view);
+
+    // Sidebar (.controls) shows on phone only when the Controls segment is active.
+    const controls = root.querySelector('.controls');
+    if (controls) controls.classList.toggle('is-active', view === 'controls');
+
+    // The preview area is active for flat/3d; hidden on phone while Controls is up.
+    previewArea.classList.toggle('is-active', view !== 'controls');
+
+    // Only reassign the visible preview panel for flat/3d, so the last-selected
+    // preview survives a trip through the Controls view (keeps desktop non-blank).
+    if (view === 'flat' || view === '3d') {
+      previewArea.querySelectorAll('.preview-panel').forEach((panel) => {
+        panel.classList.toggle('is-active', panel.dataset.view === view);
+      });
+    }
+
+    // Tab bar reflects flat/3d selection.
+    root.querySelectorAll('.tab-btn').forEach((btn) => {
+      const on = btn.dataset.view === view;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
+    // Phone segmented bar reflects controls/flat/3d selection.
+    root.querySelectorAll('.seg-btn').forEach((btn) => {
+      const on = btn.dataset.view === view;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
+    // Notify only on a real change so we don't re-fire on seeding / no-op calls.
+    if (changed) onViewChange(view);
   }
 
   function setHintsOn(on) {
@@ -237,9 +267,9 @@ export function buildAppShell(opts = {}) {
     hintsToggle.classList.toggle('is-active', !!on);
   }
 
-  // Seed initial visibility by calling applyActiveClasses directly
-  // (setActiveView skips if view === activeView, so we call apply directly)
-  applyActiveClasses();
+  // Seed initial visibility classes on first paint; changed===false so onViewChange
+  // is not fired during construction.
+  setActiveView(activeView);
 
   return {
     root,
