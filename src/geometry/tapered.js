@@ -2,6 +2,7 @@ import { normalizeParams } from '../params.js';
 import { computeRibCount } from './metrics.js';
 import { LAYER } from '../constants.js';
 import { computeMetrics } from './metrics.js';
+import { computeRibShapes } from './ribShapes.js';
 
 /**
  * Per-face fold-width sequence (rear -> front) for a tapered face.
@@ -77,14 +78,33 @@ export function buildTaperedPattern(params) {
   const segments = [];
   const regions = [];
 
-  // transverse rib footprints (ENGRAVE registration outlines)
+  const ribShapes = computeRibShapes(p);
+  const shapeFor = (kind, i) => ribShapes.find((s) => s.face === kind && s.ribIndex === i);
+
+  // transverse rib footprints (ENGRAVE): true INSET rectangles per pleat, re-derived from
+  // computeRibShapes (fixes P3b's open centreline ticks). width = per-pleat faceWidth - 2*ca
+  // from the engine (honours taper); the split-W edge columns (0 & 4) show shape.width/2.
+  // Rectangles are centred on the rear-based column centre, matching the existing trapezoid
+  // layout, and use the engine yBand PLUS the endMargin origin so they register to the
+  // ladder. Phase 5 swaps in the canonical polygon (shape.points) for pointed/alternating ends.
   for (let i = 0; i < n; i++) {
-    const y = p.endMargin + i * pit + p.rib / 2;
     for (let c = 0; c < faceKinds.length; c++) {
-      const half = colFold(c, i) / 2;
+      const shape = shapeFor(faceKinds[c], i);
+      const ribW = c === 0 || c === 4 ? shape.width / 2 : shape.width;
+      const x0 = centers[c] - ribW / 2;
+      const x1 = centers[c] + ribW / 2;
+      const y0 = p.endMargin + shape.yBand.y0; // add the fabric endMargin origin
+      const y1 = p.endMargin + shape.yBand.y1;
       segments.push({
-        type: LAYER.ENGRAVE, layer: LAYER.ENGRAVE, closed: false,
-        points: [{ x: centers[c] - half, y }, { x: centers[c] + half, y }],
+        type: LAYER.ENGRAVE,
+        layer: LAYER.ENGRAVE,
+        closed: true,
+        points: [
+          { x: x0, y: y0 },
+          { x: x1, y: y0 },
+          { x: x1, y: y1 },
+          { x: x0, y: y1 },
+        ],
       });
     }
   }

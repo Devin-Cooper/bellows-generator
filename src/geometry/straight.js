@@ -1,6 +1,7 @@
 // src/geometry/straight.js
 import { LAYER } from '../constants.js';
 import { computeMetrics } from './metrics.js';
+import { computeRibShapes } from './ribShapes.js';
 
 /**
  * Build the flat PatternModel for a straight (parallel) bellows.
@@ -20,6 +21,11 @@ export function buildStraightPattern(params) {
   const metrics = computeMetrics(params);
   const { ribCount, N } = metrics;
   const p = metrics.pitch;
+
+  const ribShapes = computeRibShapes(params);
+  const shapeFor = (kind, r) => ribShapes.find((s) => s.face === kind && s.ribIndex === r);
+  // Column -> wall face type. Cols 0 & 4 are the two halves of the split W wall.
+  const faceType = ['W', 'H', 'W', 'H', 'W'];
 
   const pleatedLength = metrics.flatPleatedLength;
   const flatLength = pleatedLength + 2 * endMargin;
@@ -90,19 +96,41 @@ export function buildStraightPattern(params) {
 
     regions.push({ kind: faceKinds[f], faceIndex: f, bbox: { x: x0, y: endMargin, w, h: pleatedLength } });
 
-    // Rib footprints (ENGRAVE), one per rib.
+    // Rib footprints (ENGRAVE) — re-derived from computeRibShapes (single source of truth):
+    // width = faceWidth - 2*ca from the engine; the split-W half columns (0 & 4) show
+    // shape.width/2 flush to the seam, full columns are centred. y-band comes from the
+    // engine's DATUM-RELATIVE yBand PLUS the fabric endMargin origin, so the fabric
+    // underlay overlays the laser ladder 1:1. In clear mode the canonical rib IS this
+    // inset rectangle; phase 5 swaps in the full canonical polygon (shape.points) so
+    // pointed/alternating corner ends flow through here.
+    const isHalf = f === 0 || f === 4;
     for (let r = 0; r < ribCount; r++) {
-      const ry0 = endMargin + r * p;
-      const ry1 = ry0 + rib;
+      const shape = shapeFor(faceType[f], r);
+      const ribW = isHalf ? shape.width / 2 : shape.width;
+      let fx0;
+      let fx1;
+      if (f === 0) {
+        fx0 = x0; // seam flush left
+        fx1 = x0 + ribW;
+      } else if (f === 4) {
+        fx1 = x0 + w; // seam flush right
+        fx0 = fx1 - ribW;
+      } else {
+        const cxc = x0 + w / 2; // full face centred
+        fx0 = cxc - ribW / 2;
+        fx1 = cxc + ribW / 2;
+      }
+      const ry0 = params.endMargin + shape.yBand.y0; // add the fabric endMargin origin
+      const ry1 = params.endMargin + shape.yBand.y1;
       segments.push({
         type: LAYER.ENGRAVE,
         layer: LAYER.ENGRAVE,
         closed: true,
         points: [
-          { x: zoneX0, y: ry0 },
-          { x: zoneX1, y: ry0 },
-          { x: zoneX1, y: ry1 },
-          { x: zoneX0, y: ry1 },
+          { x: fx0, y: ry0 },
+          { x: fx1, y: ry0 },
+          { x: fx1, y: ry1 },
+          { x: fx0, y: ry1 },
         ],
       });
     }
