@@ -76,3 +76,39 @@ export function computeRibShapes(params) {
   }
   return shapes;
 }
+
+/**
+ * PROVISIONAL corner-point geometry — paper-fold-gated (see Phase-5 plan note).
+ * Symmetric 45deg triangular apex reach for a pointed rib end. The apex sits on the
+ * rib's y-midline and extends past the inset edge toward the corner by `reach`:
+ *   reach = min(cornerAllowance, depth/2)
+ * so the two bevel edges are exactly 45deg to the draw for the default rib (depth/2 <= ca)
+ * and clamp to the corner zone otherwise. Clamping keeps the apex INSIDE the wall's own
+ * cornerAllowance band: adjacent walls' points ABUT along the corner diagonal, never bond
+ * across it. Exact reach + taper-dependent angle are validated by a printed paper fold.
+ * @param {number} depth  rib depth along the draw (yBand.y1 - yBand.y0)
+ * @param {number} cornerAllowance  per-side corner clear-zone width
+ * @returns {number}
+ */
+export function cornerPointReach(depth, cornerAllowance) {
+  return Math.min(cornerAllowance, depth / 2);
+}
+
+/**
+ * Canonical rib-local polygon. Rectangle for clear ends; a symmetric 45deg apex is
+ * inserted past x=width (right end) and/or x=0 (left end) toward the corner. Vertex
+ * order stays a simple CCW-traced closed polygon so every consumer (footprint, ladder
+ * cut outline, STL extrusion) can trace/triangulate it directly.
+ * @param {number} width  inset clear width (faceWidth - 2*cornerAllowance, per pleat)
+ * @param {number} depth  rib depth along the draw
+ * @param {{leftPointed:boolean,rightPointed:boolean}} ends
+ * @param {number} reach  apex reach from cornerPointReach()
+ * @returns {{x:number,y:number}[]}
+ */
+export function ribPolygon(width, depth, ends, reach) {
+  const pts = [{ x: 0, y: 0 }, { x: width, y: 0 }];
+  if (ends.rightPointed) pts.push({ x: width + reach, y: depth / 2 });
+  pts.push({ x: width, y: depth }, { x: 0, y: depth });
+  if (ends.leftPointed) pts.push({ x: -reach, y: depth / 2 });
+  return pts;
+}
