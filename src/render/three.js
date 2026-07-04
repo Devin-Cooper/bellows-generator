@@ -100,6 +100,21 @@ export class BellowsViewer {
     this.material.wireframe = on;
   }
 
+  /**
+   * Re-read the canvas client size and resize the renderer + camera, then
+   * render once. Needed because the canvas has 0 client size while hidden in an
+   * inactive preview tab; call this when the 3D tab becomes visible and on
+   * window resize.
+   */
+  resize() {
+    const width = this.canvas.clientWidth || 640;
+    const height = this.canvas.clientHeight || 480;
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.render(this.scene, this.camera);
+  }
+
   _animate() {
     this._raf = requestAnimationFrame(this._animate);
     this.controls.update();
