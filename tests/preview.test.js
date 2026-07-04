@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePageGrid, PAGE_SIZES, renderPageGridSVG, previewTransform, layerVisibilityCSS } from '../src/ui/preview.js';
+import { computePageGrid, PAGE_SIZES, renderPageGridSVG, previewTransform, layerVisibilityCSS, mountPreview } from '../src/ui/preview.js';
 
 describe('computePageGrid', () => {
   it('exposes physical page sizes in mm', () => {
@@ -68,5 +68,55 @@ describe('preview view helpers', () => {
   it('emits nothing when no layers are hidden', () => {
     expect(layerVisibilityCSS([])).toBe('');
     expect(layerVisibilityCSS(new Set())).toBe('');
+  });
+});
+
+/** Minimal container stub: mountPreview only ever touches innerHTML + addEventListener. */
+function fakeContainer() {
+  return { innerHTML: '', listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } };
+}
+
+const previewOptions = () => ({
+  patternSVG: '<svg id="pattern"><g inkscape:label="CUT"></g></svg>',
+  model: { bounds: { w: 360, h: 200 } },
+  params: { pageSize: 'A4' },
+});
+
+describe('mountPreview', () => {
+  it('injects the pattern SVG and the page-grid overlay on mount', () => {
+    const el = fakeContainer();
+    mountPreview(el, previewOptions());
+    expect(el.innerHTML).toContain('<svg id="pattern">');
+    expect(el.innerHTML).toContain('>Page 1<');
+    expect(el.innerHTML).toContain('>Page 2<');
+    expect(el.innerHTML).toContain('scale(1)');
+  });
+
+  it('re-renders with a new transform when zoom/pan change', () => {
+    const el = fakeContainer();
+    const api = mountPreview(el, previewOptions());
+    api.setZoom(2.5);
+    api.setPan(30, -10);
+    expect(el.innerHTML).toContain('translate(30px, -10px) scale(2.5)');
+    expect(api.getState()).toMatchObject({ zoom: 2.5, panX: 30, panY: -10 });
+  });
+
+  it('toggles a layer off then on again', () => {
+    const el = fakeContainer();
+    const api = mountPreview(el, previewOptions());
+    api.toggleLayer('CUT');
+    expect(el.innerHTML).toContain('[inkscape\\:label="CUT"]{display:none}');
+    expect(api.getState().hidden).toContain('CUT');
+    api.toggleLayer('CUT');
+    expect(el.innerHTML).not.toContain('display:none');
+  });
+
+  it('hides the page grid when toggled off and clears on destroy', () => {
+    const el = fakeContainer();
+    const api = mountPreview(el, previewOptions());
+    api.setGridVisible(false);
+    expect(el.innerHTML).not.toContain('Page 1');
+    api.destroy();
+    expect(el.innerHTML).toBe('');
   });
 });
