@@ -161,19 +161,31 @@ export function renderRibLadderSVG(model, params) {
   const hRibs = faceColumnRibs(shapes, 'H');
   const ribCount = wRibs.length;
 
-  const columns = [
-    { face: 'W', ribs: wRibs },
-    { face: 'H', ribs: hRibs },
-  ];
+  const sameWidths =
+    wRibs.length === hRibs.length &&
+    wRibs.every((r, i) => Math.abs(r.width - hRibs[i].width) < 1e-9);
+  const columns = sameWidths
+    ? [{ face: 'W', label: 'W/H', ribs: wRibs }]
+    : [
+        { face: 'W', label: 'W', ribs: wRibs },
+        { face: 'H', label: 'H', ribs: hRibs },
+      ];
 
   const cutPaths = [];
+  const notes = [];
   let colX0 = margin + kerf / 2;
   let maxRight = 0;
 
   for (const col of columns) {
     const width = col.ribs[0].width; // constant per column for now; taper handled later
     const d = traceColumn(width, colX0, datum, col.ribs.length, params);
-    cutPaths.push(`<path data-role="ladder" data-face="${col.face}" fill-rule="evenodd" d="${d}"/>`);
+    cutPaths.push(
+      `<path data-role="ladder" data-face="${col.face}" data-qty="2" fill-rule="evenodd" d="${d}"/>`
+    );
+    notes.push(
+      `<text data-role="qty" data-face="${col.face}" ` +
+        `x="${fmt(colX0)}" y="${fmt(datum - 1.5)}">${col.label} cut x2</text>`
+    );
     maxRight = colX0 + width + kerf / 2;
     colX0 = colX0 + width + kerf + gutter;
   }
@@ -189,6 +201,10 @@ export function renderRibLadderSVG(model, params) {
     `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
     `stroke="${LAYER_COLORS[cut]}" fill="none">` +
     cutPaths.join('') +
+    `</g>` +
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">` +
+    notes.join('') +
     `</g></svg>`
   );
 }
