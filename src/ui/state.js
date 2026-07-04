@@ -49,6 +49,7 @@ export function initApp(rootEl) {
 
   // Wire slider after viewer is created so the closure resolves correctly
   slider.addEventListener('input', () => {
+    viewer.params = params; // always push the latest params before rebuilding (fix: stale-params bug)
     extension = Number(slider.value);
     viewer.setExtension(extension);
   });

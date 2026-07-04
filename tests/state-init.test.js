@@ -133,6 +133,33 @@ describe('initApp', () => {
     expect(triggerDownload.mock.calls[0][1]).toBe('bellows-ribs.stl');
   });
 
+  it('slider uses fresh params immediately after a param change without waiting for debounce', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    const viewer = BellowsViewer.mock.instances[0];
+
+    // Change a param — updates params = next immediately, queues a debounced recompute
+    const input = root.querySelector('[data-key="maxDraw"]');
+    input.value = '300';
+    input.dispatchEvent(new Event('input'));
+
+    // DO NOT run timers — the debounce has NOT fired, so viewer.params is still stale
+    // without the fix in the slider handler
+
+    // Move the slider immediately
+    const slider = root.querySelector('input[type="range"]');
+    slider.value = '0.5';
+    slider.dispatchEvent(new Event('input'));
+
+    // setExtension must have been called with the slider value
+    expect(viewer.setExtension).toHaveBeenCalledWith(0.5);
+
+    // viewer.params must already reflect the fresh param change (maxDraw=300)
+    expect(viewer.params).toBeDefined();
+    expect(viewer.params.maxDraw).toBe(300);
+  });
+
   it('mountPreview is called on initial render and reuses destroy-before-remount on recompute', () => {
     const root = document.createElement('div');
     document.body.appendChild(root);
