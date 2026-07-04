@@ -1,4 +1,5 @@
 import { LAYER, LAYER_COLORS } from '../constants.js';
+import { computeRibShapes } from '../geometry/ribShapes.js';
 
 const LAYER_ORDER = [
   LAYER.CUT,
@@ -70,71 +71,124 @@ export function renderPatternSVG(model, params) {
 }
 
 /**
- * Stiffener rib-ladder SVG. One column per unique face width (two widths for a
- * rectangular cross-section). Ribs are kerf-grown rectangles stacked at the
- * engine pitch so they self-align with the fabric fold lines. Each gap gets two
- * <=2mm connector tabs at the lateral rib ends (the corner clear zone); they
- * cross the transverse fold line and may be severed after bonding.
+ * Offset an axis-aligned polygon relative to its own bbox centre.
+ * delta > 0 grows OUTWARD (laser kerf on an outer cut), delta < 0 shrinks INWARD
+ * (kerf on an interior notch). No clipping library needed.
+ */
+function offsetFromCentre(points, delta) {
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  return points.map((p) => ({
+    x: p.x < cx ? p.x - delta : p.x > cx ? p.x + delta : p.x,
+    y: p.y < cy ? p.y - delta : p.y > cy ? p.y + delta : p.y,
+  }));
+}
+
+/** Ribs of one representative wall of a face, sorted rear->front by ribIndex. */
+function faceColumnRibs(shapes, face) {
+  const walls = [...new Set(shapes.filter((s) => s.face === face).map((s) => s.wallIndex))].sort(
+    (a, b) => a - b
+  );
+  return shapes
+    .filter((s) => s.face === face && s.wallIndex === walls[0])
+    .sort((a, b) => a.ribIndex - b.ribIndex);
+}
+
+/**
+ * Trace ONE connected ladder outline for a constant-width column and return its
+ * multi-subpath d-string: outer boundary grown OUTWARD by kerf/2, plus one middle
+ * notch per inter-rib gap shrunk INWARD by kerf/2. The notch stops tabW short of each
+ * lateral end, so the left/right rails stay solid and every rib is held by two
+ * connector tabs (the column cuts as one snap-apart piece — fixes P0).
+ */
+function traceColumn(width, colX0, datum, ribCount, params) {
+  const { rib, gap, kerf } = params;
+  const pit = rib + gap;
+  const half = kerf / 2;
+  const tabW = Math.min(2, params.cornerAllowance);
+  const xL = colX0;
+  const xR = colX0 + width;
+  const yTop0 = datum;
+  const yBotN = datum + (ribCount - 1) * pit + rib;
+
+  const outer = [
+    { x: xL, y: yTop0 },
+    { x: xR, y: yTop0 },
+    { x: xR, y: yBotN },
+    { x: xL, y: yBotN },
+  ];
+  const subs = [pathData(offsetFromCentre(outer, half), true)];
+
+  for (let i = 0; i < ribCount - 1; i++) {
+    const gTop = datum + i * pit + rib; // bottom of rib i
+    const gBot = datum + (i + 1) * pit; // top of rib i+1
+    const nl = xL + tabW;
+    const nr = xR - tabW;
+    if (nr <= nl) continue; // rib narrower than two tabs: leave the gap solid (rare)
+    const notch = [
+      { x: nl, y: gTop },
+      { x: nr, y: gTop },
+      { x: nr, y: gBot },
+      { x: nl, y: gBot },
+    ];
+    subs.push(pathData(offsetFromCentre(notch, -half), true));
+  }
+  return subs.join(' ');
+}
+
+/**
+ * Stiffener rib-ladder SVG. Consumes the canonical rib shapes and emits ONE connected
+ * CUT outline per column (outer boundary + per-gap middle notches) so the ribs stay
+ * joined by ≤2 mm connector tabs and cut as a single snap-apart piece — no polygon-union
+ * library. Kerf grows the outer boundary OUTWARD (parts come out at nominal width). Both
+ * W and H families are emitted. cornerMode shapes the rib ends via computeRibShapes (clear
+ * = rectangles here; pointed/alternating land in the corner-modes phase).
  * @param {import('../geometry/types.js').PatternModel} model
  * @param {object} params
  * @returns {string}
  */
 export function renderRibLadderSVG(model, params) {
-  const { ribCount, pitch } = model.metrics;
-  const { rib, gap, kerf, cornerAllowance: ca, frontW, frontH } = params;
+  const shapes = computeRibShapes(params);
+  const { rib, gap, kerf } = params;
+  const pit = rib + gap;
   const margin = 5;
   const gutter = 10;
-  const tabW = 2;
-  const f = (n) => String(Number(n.toFixed(4)));
+  const datum = margin; // Phase 6 aligns this to the fabric endMargin datum
+
+  const wRibs = faceColumnRibs(shapes, 'W');
+  const hRibs = faceColumnRibs(shapes, 'H');
+  const ribCount = wRibs.length;
 
   const columns = [
-    { face: 'W', len: frontW - 2 * ca },
-    { face: 'H', len: frontH - 2 * ca },
+    { face: 'W', ribs: wRibs },
+    { face: 'H', ribs: hRibs },
   ];
 
-  const rects = [];
-  let colX = margin + kerf / 2;
-  let maxX = 0;
+  const cutPaths = [];
+  let colX0 = margin + kerf / 2;
+  let maxRight = 0;
 
   for (const col of columns) {
-    const grownW = col.len + kerf;
-    for (let i = 0; i < ribCount; i++) {
-      const yTop = margin + i * pitch;
-      rects.push(
-        `<rect data-role="rib" data-face="${col.face}" ` +
-          `x="${f(colX - kerf / 2)}" y="${f(yTop - kerf / 2)}" ` +
-          `width="${f(grownW)}" height="${f(rib + kerf)}"/>`
-      );
-    }
-    for (let i = 0; i < ribCount - 1; i++) {
-      const tabY = margin + i * pitch + rib - 1;
-      const tabH = gap + 2;
-      const leftX = colX;
-      const rightX = colX + col.len - tabW;
-      rects.push(
-        `<rect data-role="tab" data-face="${col.face}" data-side="left" ` +
-          `x="${f(leftX)}" y="${f(tabY)}" width="${f(tabW)}" height="${f(tabH)}"/>`
-      );
-      rects.push(
-        `<rect data-role="tab" data-face="${col.face}" data-side="right" ` +
-          `x="${f(rightX)}" y="${f(tabY)}" width="${f(tabW)}" height="${f(tabH)}"/>`
-      );
-    }
-    maxX = colX - kerf / 2 + grownW;
-    colX = colX + col.len + kerf + gutter;
+    const width = col.ribs[0].width; // constant per column for now; taper handled later
+    const d = traceColumn(width, colX0, datum, col.ribs.length, params);
+    cutPaths.push(`<path data-role="ladder" data-face="${col.face}" fill-rule="evenodd" d="${d}"/>`);
+    maxRight = colX0 + width + kerf / 2;
+    colX0 = colX0 + width + kerf + gutter;
   }
 
-  const w = maxX + margin;
-  const h = margin + (ribCount - 1) * pitch + rib + kerf / 2 + margin;
+  const w = maxRight + margin;
+  const h = datum + (ribCount - 1) * pit + rib + kerf / 2 + margin;
   const cut = LAYER.CUT;
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
-    `width="${f(w)}mm" height="${f(h)}mm" viewBox="0 0 ${f(w)} ${f(h)}">` +
+    `width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="0 0 ${fmt(w)} ${fmt(h)}">` +
     `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
     `stroke="${LAYER_COLORS[cut]}" fill="none">` +
-    rects.join('') +
+    cutPaths.join('') +
     `</g></svg>`
   );
 }

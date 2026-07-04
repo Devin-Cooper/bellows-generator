@@ -5,84 +5,80 @@ import { computeMetrics } from '../src/geometry/metrics.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
 
 function ladder(overrides = {}) {
-  const params = normalizeParams({ ...DEFAULT_PARAMS, ...overrides });
+  const params = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'clear', ...overrides });
   const model = { metrics: computeMetrics(params) };
   return { svg: renderRibLadderSVG(model, params), params, metrics: model.metrics };
 }
 
-function parseRects(svg) {
+// All <path data-role="ladder"> attribute maps, optionally filtered by face.
+function ladderPaths(svg, face) {
   const out = [];
-  const re = /<rect ([^>]*?)\/>/g;
+  const re = /<path ([^>]*?)\/>/g;
   let m;
   while ((m = re.exec(svg)) !== null) {
     const attrs = {};
     const are = /([\w-]+)="([^"]*)"/g;
     let a;
     while ((a = are.exec(m[1])) !== null) attrs[a[1]] = a[2];
-    out.push(attrs);
+    if (attrs['data-role'] === 'ladder' && (!face || attrs['data-face'] === face)) out.push(attrs);
   }
   return out;
 }
 
-describe('renderRibLadderSVG', () => {
-  it('emits one rib per position per unique face width', () => {
+// bbox of the OUTER subpath (everything before the first Z) of a d-string.
+function outerBBox(d) {
+  const first = d.split('Z')[0];
+  const nums = first.match(/-?[\d.]+/g).map(Number);
+  const xs = [];
+  const ys = [];
+  for (let i = 0; i < nums.length; i += 2) { xs.push(nums[i]); ys.push(nums[i + 1]); }
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+}
+
+describe('renderRibLadderSVG — connected outline (P0)', () => {
+  it('cuts each column as ONE connected path, not loose rects', () => {
     const { svg, metrics } = ladder({ frontW: 160, frontH: 115 });
-    const rects = parseRects(svg);
-    const ribsW = rects.filter((r) => r['data-role'] === 'rib' && r['data-face'] === 'W');
-    const ribsH = rects.filter((r) => r['data-role'] === 'rib' && r['data-face'] === 'H');
-    expect(ribsW.length).toBe(metrics.ribCount);
-    expect(ribsH.length).toBe(metrics.ribCount);
+    expect(svg.includes('data-role="rib"')).toBe(false); // no confetti rib rects
+    expect(svg.includes('data-role="tab"')).toBe(false);  // no confetti tab rects
+    expect(ladderPaths(svg, 'W').length).toBe(1);
+    expect(ladderPaths(svg, 'H').length).toBe(1);
+    // outer boundary + (ribCount-1) middle notches = ribCount subpaths in the single path
+    const dW = ladderPaths(svg, 'W')[0].d;
+    expect((dW.match(/M /g) || []).length).toBe(metrics.ribCount);
+    // the notches leave connector tabs: each notch is narrower than the rib band
+    const subs = dW.split('Z').filter((s) => s.trim().length);
+    const outerW = outerBBox(dW).maxX - outerBBox(dW).minX;
+    const notch = subs[1].match(/-?[\d.]+/g).map(Number);
+    const notchXs = notch.filter((_, i) => i % 2 === 0);
+    const notchW = Math.max(...notchXs) - Math.min(...notchXs);
+    expect(notchW).toBeLessThan(outerW); // tabs remain on both ends
+  });
+
+  it('emits BOTH W and H rib families (P5)', () => {
+    const { svg } = ladder({ frontW: 160, frontH: 115 });
+    expect(ladderPaths(svg, 'W').length).toBe(1);
+    expect(ladderPaths(svg, 'H').length).toBe(1);
+  });
+
+  it('grows the outline OUTWARD by kerf so parts cut to nominal width', () => {
+    const { svg, params } = ladder({ frontW: 160, frontH: 115 });
+    const ca = params.cornerAllowance;
+    const bW = outerBBox(ladderPaths(svg, 'W')[0].d);
+    const bH = outerBBox(ladderPaths(svg, 'H')[0].d);
+    expect(bW.maxX - bW.minX).toBeCloseTo(160 - 2 * ca + params.kerf, 4);
+    expect(bH.maxX - bH.minX).toBeCloseTo(115 - 2 * ca + params.kerf, 4);
+  });
+
+  it('spans ribCount pitches along the draw (self-aligns with fold lines)', () => {
+    const { svg, params, metrics } = ladder({ frontW: 160, frontH: 115 });
+    const b = outerBBox(ladderPaths(svg, 'W')[0].d);
+    const expected = (metrics.ribCount - 1) * metrics.pitch + params.rib + params.kerf;
+    expect(b.maxY - b.minY).toBeCloseTo(expected, 4);
+  });
+
+  it('is a valid <svg> with mm dimensions', () => {
+    const { svg } = ladder({ frontW: 160, frontH: 115 });
     expect(svg.startsWith('<svg')).toBe(true);
     expect(/width="[\d.]+mm"/.test(svg)).toBe(true);
-  });
-
-  it('kerf-compensates rib width to faceDim - 2*cornerAllowance + kerf', () => {
-    const { svg, params } = ladder({ frontW: 160, frontH: 115 });
-    const rects = parseRects(svg);
-    const ribW = rects.find((r) => r['data-role'] === 'rib' && r['data-face'] === 'W');
-    const ribH = rects.find((r) => r['data-role'] === 'rib' && r['data-face'] === 'H');
-    const ca = params.cornerAllowance;
-    const kerf = params.kerf;
-    expect(parseFloat(ribW.width)).toBeCloseTo(160 - 2 * ca + kerf, 6);
-    expect(parseFloat(ribH.width)).toBeCloseTo(115 - 2 * ca + kerf, 6);
-  });
-
-  it('steps ribs by the engine pitch so they self-align with fold lines', () => {
-    const { svg, metrics } = ladder({ frontW: 160, frontH: 115 });
-    const rects = parseRects(svg);
-    const ribsW = rects.filter((r) => r['data-role'] === 'rib' && r['data-face'] === 'W');
-    const y0 = parseFloat(ribsW[0].y);
-    const y1 = parseFloat(ribsW[1].y);
-    expect(y1 - y0).toBeCloseTo(metrics.pitch, 6);
-  });
-
-  it('places two <=2mm connector tabs per gap in the corner clear zone', () => {
-    const { svg, params, metrics } = ladder({ frontW: 160, frontH: 115 });
-    const rects = parseRects(svg);
-    const ca = params.cornerAllowance;
-
-    const tabs = rects.filter((r) => r['data-role'] === 'tab');
-    // two faces x two tabs per gap x (ribCount-1) gaps
-    expect(tabs.length).toBe(2 * 2 * (metrics.ribCount - 1));
-    for (const t of tabs) expect(parseFloat(t.width)).toBeLessThanOrEqual(2);
-
-    const tabsW = tabs.filter((t) => t['data-face'] === 'W');
-    expect(tabsW.length).toBe(2 * (metrics.ribCount - 1));
-
-    const ribW = rects.find((r) => r['data-role'] === 'rib' && r['data-face'] === 'W');
-    const ribLeft = parseFloat(ribW.x);
-    const ribRight = ribLeft + parseFloat(ribW.width);
-
-    for (const t of tabsW.filter((t) => t['data-side'] === 'left')) {
-      const x = parseFloat(t.x);
-      expect(x).toBeGreaterThanOrEqual(ribLeft - 1e-6);
-      expect(x - ribLeft).toBeLessThan(ca); // within the per-side corner clear zone
-    }
-    for (const t of tabsW.filter((t) => t['data-side'] === 'right')) {
-      const x = parseFloat(t.x);
-      const right = x + parseFloat(t.width);
-      expect(right).toBeLessThanOrEqual(ribRight + 1e-6);
-      expect(ribRight - right).toBeLessThan(ca);
-    }
   });
 });
