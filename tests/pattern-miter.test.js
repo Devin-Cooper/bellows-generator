@@ -58,4 +58,39 @@ describe('straight corner-miter tilt (P7)', () => {
       else expect(slope).toBeLessThan(0);
     }
   });
+
+  it('absolute (i+c) parity: c=0,i=0 is MOUNTAIN; each diagonal matches ((i+c)%2===0)', () => {
+    const model = buildPatternModel({ ...A6 });
+    const ds = diagonals(model);
+    const { pitch: p } = model.metrics;
+    const { endMargin, rib, gap } = A6;
+
+    // Recover the 4 corner x-positions from diagonal midpoints; ascending sort gives rank = c.
+    const cornerXs = [...new Set(ds.map((s) => (s.points[0].x + s.points[1].x) / 2))].sort(
+      (a, b) => a - b
+    );
+    expect(cornerXs).toHaveLength(4);
+
+    // Absolute anchor: the diagonal at c=0, i=0 MUST be FOLD_MOUNTAIN.
+    // A global-flip mutation ((i+c+1)%2) or a dropped-corner mutation ((i)%2) would invert this.
+    const anchor = ds.find((s) => {
+      const midX = (s.points[0].x + s.points[1].x) / 2;
+      const midY = (s.points[0].y + s.points[1].y) / 2;
+      const c = cornerXs.indexOf(midX);
+      const i = Math.round((midY - endMargin - rib - gap / 2) / p);
+      return c === 0 && i === 0;
+    });
+    expect(anchor).toBeDefined();
+    expect(anchor.type).toBe(LAYER.FOLD_MOUNTAIN);
+
+    // Every diagonal: independently compute expected type from (i+c) parity and compare.
+    for (const s of ds) {
+      const midX = (s.points[0].x + s.points[1].x) / 2;
+      const midY = (s.points[0].y + s.points[1].y) / 2;
+      const c = cornerXs.indexOf(midX);
+      const i = Math.round((midY - endMargin - rib - gap / 2) / p);
+      const expected = (i + c) % 2 === 0 ? LAYER.FOLD_MOUNTAIN : LAYER.FOLD_VALLEY;
+      expect(s.type, `diagonal c=${c} i=${i}: expected ${expected}`).toBe(expected);
+    }
+  });
 });
