@@ -77,7 +77,7 @@ export function buildControlPanel(opts = {}) {
       if (meta.unit) {
         const unit = document.createElement('span');
         unit.className = 'field-unit';
-        unit.textContent = meta.unit;
+        unit.textContent = ' ' + meta.unit;
         label.appendChild(unit);
       }
 

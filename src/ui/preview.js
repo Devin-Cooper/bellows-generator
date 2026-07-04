@@ -112,6 +112,7 @@ export function mountPreview(container, options) {
     (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       downAt.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      container.setPointerCapture?.(e.pointerId);
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         prevDist = Math.hypot(a.x - b.x, a.y - b.y);

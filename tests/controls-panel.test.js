@@ -92,15 +92,26 @@ describe('buildControlPanel', () => {
     expect(field).not.toBeNull();
     const label = field.querySelector('.field-label');
     expect(label.textContent).toContain('Front width');
-    expect(field.querySelector('.field-unit').textContent).toBe('mm');
+    expect(field.querySelector('.field-unit').textContent).toBe(' mm');
     expect(field.querySelector('.hint').textContent).toContain('front');
+  });
+
+  it('field-label accessible name has a whitespace separator between label text and unit', () => {
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    const frontW = el.querySelector('[data-key="frontW"]');
+    const label = frontW.closest('.field').querySelector('.field-label');
+    // "Front width mm" — must not be "widthmm" with no separator
+    expect(label.textContent).toMatch(/front width\s+mm/i);
   });
 
   it('omits the unit chip for unitless fields but keeps the hint', () => {
     const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
     const typeField = el.querySelector('[data-key="type"]').closest('.field');
     expect(typeField.querySelector('.field-unit')).toBeNull();
-    expect(typeField.querySelector('.field-label').textContent).toContain('Bellows type');
+    const typeLabel = typeField.querySelector('.field-label');
+    expect(typeLabel.textContent).toContain('Bellows type');
+    // no trailing whitespace artifact from a missing unit span
+    expect(typeLabel.textContent.trim()).toBe('Bellows type');
     expect(typeField.querySelector('.hint')).not.toBeNull();
   });
 
