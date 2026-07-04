@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePageGrid, PAGE_SIZES, renderPageGridSVG } from '../src/ui/preview.js';
+import { computePageGrid, PAGE_SIZES, renderPageGridSVG, previewTransform, layerVisibilityCSS } from '../src/ui/preview.js';
 
 describe('computePageGrid', () => {
   it('exposes physical page sizes in mm', () => {
@@ -48,5 +48,25 @@ describe('renderPageGridSVG', () => {
     expect(svg).toContain('data-overlap="10"');
     // second tile positioned at the stride
     expect(svg).toContain('<rect x="200" y="0" width="210" height="297"');
+  });
+});
+
+describe('preview view helpers', () => {
+  it('builds a CSS transform from zoom/pan state', () => {
+    expect(previewTransform({ zoom: 2, panX: 15, panY: -4 })).toBe(
+      'translate(15px, -4px) scale(2)'
+    );
+  });
+
+  it('hides only the requested layers via inkscape:label selectors', () => {
+    const css = layerVisibilityCSS(['CUT', 'ENGRAVE']);
+    expect(css).toContain('[inkscape\\:label="CUT"]{display:none}');
+    expect(css).toContain('[inkscape\\:label="ENGRAVE"]{display:none}');
+    expect(css).not.toContain('FOLD_MOUNTAIN');
+  });
+
+  it('emits nothing when no layers are hidden', () => {
+    expect(layerVisibilityCSS([])).toBe('');
+    expect(layerVisibilityCSS(new Set())).toBe('');
   });
 });

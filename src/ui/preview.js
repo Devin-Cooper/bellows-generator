@@ -54,3 +54,15 @@ export function renderPageGridSVG(grid) {
     `${rects}\n  </g>`
   );
 }
+
+/** CSS transform string for the zoom/pan stage (transform-origin: top left). */
+export function previewTransform(state) {
+  return `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+}
+
+/** CSS that hides the given layer types by their inkscape:label attribute. */
+export function layerVisibilityCSS(hidden) {
+  const types = Array.from(hidden);
+  if (types.length === 0) return '';
+  return types.map((t) => `[inkscape\\:label="${t}"]{display:none}`).join('');
+}
