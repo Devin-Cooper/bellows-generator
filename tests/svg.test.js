@@ -26,6 +26,15 @@ function fixtureModel() {
         closed: false,
         layer: 'FOLD_MOUNTAIN',
       },
+      {
+        type: 'GLUE_TAB',
+        points: [
+          { x: 8, y: 0 },
+          { x: 8, y: 20 },
+        ],
+        closed: false,
+        layer: 'GLUE_TAB',
+      },
     ],
     regions: [],
     seamFaceIndex: 0,
@@ -60,5 +69,15 @@ describe('renderPatternSVG', () => {
     expect(svg).toContain('M -0.075 -0.075 L 10.075 -0.075 L 10.075 20.075 L -0.075 20.075 Z');
     // fold line is untouched.
     expect(svg).toContain('M 5 0 L 5 20');
+  });
+
+  it('renders GLUE_TAB 2-point lines at nominal coordinates (no kerf offset)', () => {
+    const svg = renderPatternSVG(fixtureModel(), params);
+    // The glue-tab boundary is a scored fold line; it must NOT be kerf-grown.
+    expect(svg).toContain('M 8 0 L 8 20');
+    // It must appear inside the GLUE_TAB layer group with the pinned stroke color.
+    expect(svg).toContain(
+      `<g inkscape:groupmode="layer" inkscape:label="GLUE_TAB" stroke="${LAYER_COLORS.GLUE_TAB}" fill="none">`
+    );
   });
 });

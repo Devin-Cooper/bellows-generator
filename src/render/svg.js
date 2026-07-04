@@ -8,13 +8,17 @@ const LAYER_ORDER = [
   LAYER.GLUE_TAB,
 ];
 
-// Only outer cut boundaries are kerf-compensated; scored lines stay on the nominal line.
-const KERF_LAYERS = new Set([LAYER.CUT, LAYER.GLUE_TAB]);
+// Only the outer CUT boundary is kerf-compensated.
+// GLUE_TAB is a scored fold line, not a kerf-grown cut edge — the outer CUT rectangle
+// already encloses the tab region, so GLUE_TAB must NOT pass through growRect.
+const KERF_LAYERS = new Set([LAYER.CUT]);
 
 const fmt = (n) => String(Math.round(n * 1e4) / 1e4);
 
 /** Grow an axis-aligned polygon outward from its bbox centre by kerf/2 (no clipping lib needed). */
 function growRect(points, kerf) {
+  if (points.length < 3)
+    throw new Error(`growRect expects an axis-aligned polygon (>=3 points), got ${points.length}`);
   const half = kerf / 2;
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
