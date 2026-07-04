@@ -1,5 +1,59 @@
 // src/ui/appShell.js
 
+export const LASER_LEGEND = [
+  { color: '#FF0000', name: 'CUT', op: 'cut' },
+  { color: '#FF00FF', name: 'GLUE_TAB', op: 'cut' },
+  { color: '#0000FF', name: 'FOLD_MOUNTAIN', op: 'score' },
+  { color: '#00AA00', name: 'FOLD_VALLEY', op: 'score' },
+  { color: '#000000', name: 'ENGRAVE', op: 'engrave' },
+];
+
+/** Full inner HTML for the collapsible intro/help panel. */
+export function helpPanelHTML() {
+  const legend = LASER_LEGEND.map(
+    (l) =>
+      `<li class="legend-row">` +
+      `<span class="legend-swatch" style="background:${l.color}"></span>` +
+      `<code class="legend-name">${l.name}</code> ` +
+      `<span class="legend-color">${l.color}</span> — ${l.op}` +
+      `</li>`
+  ).join('');
+  return (
+    `<h2 class="help-title">What this is</h2>` +
+    `<p class="help-lede">A parametric generator for camera bellows: set your openings and draw, ` +
+    `then export laser-ready fold patterns and rib STLs.</p>` +
+    `<h3>Quickstart</h3>` +
+    `<ol class="help-quickstart">` +
+    `<li>Load the <strong>A6</strong> preset to start from a known-good bellows.</li>` +
+    `<li>Tweak the openings, draw and pleats to fit your camera.</li>` +
+    `<li>Check the <strong>Flat</strong> and <strong>3D</strong> tabs to sanity-check the pattern and fold.</li>` +
+    `<li>Export the fold-pattern SVG (or tiled PDF) and rib STL, then cut.</li>` +
+    `</ol>` +
+    `<h3>Laser colour legend</h3>` +
+    `<ul class="help-legend">${legend}</ul>` +
+    `<h3>Before you cut</h3>` +
+    `<ul class="help-caveats">` +
+    `<li>Always run a <strong>paper fold-test</strong> before cutting your final material.</li>` +
+    `<li><strong>Tapered</strong> bellows are experimental — verify the geometry carefully.</li>` +
+    `</ul>`
+  );
+}
+
+/** Populate a .help-panel element with the intro/help content. */
+export function fillHelpPanel(el) {
+  el.innerHTML = helpPanelHTML();
+  return el;
+}
+
+/** Wire a "?" button to toggle `.is-open` on a help panel and keep aria-expanded in sync. */
+export function wireHelpToggle(button, panel) {
+  button.setAttribute('aria-expanded', panel.classList.contains('is-open') ? 'true' : 'false');
+  button.addEventListener('click', () => {
+    const open = panel.classList.toggle('is-open');
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+}
+
 /**
  * Build the responsive app shell: sticky header (title, preset buttons, a
  * "Show hints" toggle, a "?" help button), the Flat/3D preview tabs, the phone
@@ -70,11 +124,6 @@ export function buildAppShell(opts = {}) {
   helpBtn.setAttribute('aria-expanded', 'false');
   helpBtn.setAttribute('aria-label', 'Help');
   helpBtn.textContent = '?';
-  helpBtn.addEventListener('click', () => {
-    const open = helpPanel.classList.toggle('is-open');
-    helpBtn.setAttribute('aria-expanded', String(open));
-  });
-
   headerActions.append(makePreset('A6'), makePreset('Default'), hintsToggle, helpBtn);
   headerEl.append(title, headerActions);
 
@@ -83,6 +132,9 @@ export function buildAppShell(opts = {}) {
   helpPanel.className = 'help-panel';
   helpPanel.setAttribute('role', 'region');
   helpPanel.setAttribute('aria-label', 'Help');
+
+  fillHelpPanel(helpPanel);
+  wireHelpToggle(helpBtn, helpPanel);
 
   // --- Preview area ---------------------------------------------------------
   const previewArea = document.createElement('div');
