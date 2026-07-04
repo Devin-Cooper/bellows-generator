@@ -36,3 +36,21 @@ export function computePageGrid(bounds, pageSize, overlap = 10) {
 
   return { pageSize: key, overlap, cols, rows, count: cols * rows, tiles };
 }
+
+const fmt = (n) => String(Math.round(n * 1e4) / 1e4);
+
+/** SVG <g> overlay (mm coords) marking PDF page tiles with numbers + overlap metadata. */
+export function renderPageGridSVG(grid) {
+  const rects = grid.tiles
+    .map(
+      (t) =>
+        `    <rect x="${fmt(t.x)}" y="${fmt(t.y)}" width="${fmt(t.w)}" height="${fmt(t.h)}" ` +
+        `fill="none" stroke="#8888ff" stroke-width="0.5" stroke-dasharray="4 2" />\n` +
+        `    <text x="${fmt(t.x + 4)}" y="${fmt(t.y + 10)}" font-size="8" fill="#8888ff">Page ${t.page}</text>`
+    )
+    .join('\n');
+  return (
+    `  <g inkscape:groupmode="layer" inkscape:label="PAGE_GRID" data-overlap="${fmt(grid.overlap)}">\n` +
+    `${rects}\n  </g>`
+  );
+}

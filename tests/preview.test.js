@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePageGrid, PAGE_SIZES } from '../src/ui/preview.js';
+import { computePageGrid, PAGE_SIZES, renderPageGridSVG } from '../src/ui/preview.js';
 
 describe('computePageGrid', () => {
   it('exposes physical page sizes in mm', () => {
@@ -31,5 +31,22 @@ describe('computePageGrid', () => {
     const grid = computePageGrid({ w: 5, h: 5 }, 'Foolscap');
     expect(grid.pageSize).toBe('A4');
     expect(grid.tiles[0]).toMatchObject({ w: 210, h: 297 });
+  });
+});
+
+describe('renderPageGridSVG', () => {
+  it('draws a dashed boundary rect and page label per tile and records the overlap', () => {
+    const grid = computePageGrid({ w: 360, h: 200 }, 'A4', 10);
+    const svg = renderPageGridSVG(grid);
+    // one <rect> per tile
+    expect((svg.match(/<rect /g) || []).length).toBe(2);
+    // page numbers rendered
+    expect(svg).toContain('>Page 1<');
+    expect(svg).toContain('>Page 2<');
+    // dashed boundary + overlap metadata
+    expect(svg).toContain('stroke-dasharray');
+    expect(svg).toContain('data-overlap="10"');
+    // second tile positioned at the stride
+    expect(svg).toContain('<rect x="200" y="0" width="210" height="297"');
   });
 });
