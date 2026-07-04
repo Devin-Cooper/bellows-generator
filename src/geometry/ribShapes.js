@@ -55,14 +55,10 @@ export function computeRibShapes(params) {
       const width = faceWidth - 2 * ca;             // inset clear width (fixes P1/P3)
       const y0 = ribIndex * pitch;
       const y1 = y0 + rib;
-      // cornerMode 'clear': the inset rectangle in rib-local coords.
-      // PROVISIONAL corner-end geometry (square) — pointed/alternating land in Phase 5.
-      const points = [
-        { x: 0, y: 0 },
-        { x: width, y: 0 },
-        { x: width, y: rib },
-        { x: 0, y: rib },
-      ];
+      const depth = y1 - y0;
+      const reach = cornerPointReach(depth, ca);
+      const ends = cornerModeEnds(params.cornerMode ?? 'clear', wallIndex, ribIndex);
+      const points = ribPolygon(width, depth, ends, reach);
       shapes.push({
         face,
         wallIndex,
@@ -92,6 +88,21 @@ export function computeRibShapes(params) {
  */
 export function cornerPointReach(depth, cornerAllowance) {
   return Math.min(cornerAllowance, depth / 2);
+}
+
+/**
+ * Decide whether a rib's left/right corner-adjacent ends carry a 45deg point.
+ *   clear     -> neither end (rectangle)
+ *   pointed   -> both corner ends (the four-wall ring points into every corner)
+ *   (alternating handled in the next task)
+ * @param {'clear'|'pointed'|'alternating'} cornerMode
+ * @param {number} wallIndex
+ * @param {number} ribIndex
+ * @returns {{leftPointed:boolean,rightPointed:boolean}}
+ */
+export function cornerModeEnds(cornerMode, wallIndex, ribIndex) {
+  if (cornerMode === 'pointed') return { leftPointed: true, rightPointed: true };
+  return { leftPointed: false, rightPointed: false }; // clear (and, for now, alternating)
 }
 
 /**
