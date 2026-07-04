@@ -46,7 +46,7 @@
 *::before,
 *::after { box-sizing: border-box; }
 
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; max-width: 100%; overflow-x: hidden; }
 
 body {
   background: var(--bg);
@@ -64,6 +64,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  max-width: 100%;
 }
 
 /* ---------- Header ---------- */
@@ -98,12 +99,13 @@ body {
 /* The controls-host wrapper is layout-transparent so the .controls form itself
    becomes the grid item that all pinned .controls placement/scroll/visibility
    rules address. */
-.controls-host { display: contents; }
+.controls-host { display: contents; min-width: 0; }
 
 .controls {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: var(--space-3);
+  min-width: 0;
 }
 
 .field {
@@ -228,6 +230,7 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .collapse-row {
@@ -488,7 +491,15 @@ body {
     row-gap: var(--space-1);
   }
   .app-title {
+    flex: 1 1 100%;
+    white-space: normal;
     font-size: 1rem;
+  }
+  .header-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .header-actions .btn,
   .header-actions .toggle {
@@ -501,11 +512,11 @@ body {
     flex-wrap: wrap;
   }
   .collapse-row input[type="range"] {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
     min-width: 0;
   }
   .extension-label {
-    flex-shrink: 0;
+    flex: 0 0 auto;
   }
 }
 
