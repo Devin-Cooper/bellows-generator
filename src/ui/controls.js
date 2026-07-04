@@ -43,8 +43,8 @@ const GROUPS = [
   { title: 'Type', fields: ['type'] },
   { title: 'Openings', fields: ['frontW', 'frontH', 'rearW', 'rearH'] },
   { title: 'Draw & pleats', fields: ['maxDraw', 'drawFactor', 'rib', 'gap', 'ribCount'] },
-  { title: 'Corners, tabs & margins', fields: ['cornerAllowance', 'glueTab', 'endMargin'] },
-  { title: 'Material & laser', fields: ['fabricThickness', 'ribThickness', 'kerf'] },
+  { title: 'Corners, tabs & margins', fields: ['cornerMode', 'cornerAllowance', 'glueTab', 'endMargin'] },
+  { title: 'Material & laser', fields: ['fabricThickness', 'ribThickness', 'kerf', 'bedSize', 'printOffset'] },
   { title: 'Optics', fields: ['focalLength', 'opticalOffset'] },
   { title: 'Export', fields: ['pageSize'] },
 ];
