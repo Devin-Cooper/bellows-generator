@@ -137,23 +137,38 @@ export function buildStraightPattern(params) {
     });
   }
 
-  // 45-degree corner miter diagonals: one per pleat per corner, alternating orientation.
+  // 45-degree corner-miter diagonals: one per pleat per corner.
+  // P6 fix: clamp the diagonal REACH so its total rise (2*reach) never exceeds the pleat
+  //   pitch. Was 2*ca = 30mm, overrunning the 14.5mm pitch and sweeping through the rib
+  //   bands; reach = min(cornerAllowance, pitch/2) keeps a true 45deg crease that fits
+  //   inside one gap, with horizontal reach still confined to the cornerAllowance zone.
+  // P7 fix: tilt sense derives from (ribIndex + cornerIndex) parity, matching the M/V
+  //   type. Using i alone made the diagonal tilt backwards at 2 of the 4 corners.
+  // PROVISIONAL: the exact bevel reach into the corner zone is paper-fold-gated
+  //   (design spec sec 4/5) — the construction rule (45deg, rise <= pitch, tilt by (i+c))
+  //   is fixed here; the precise reach is tuned against a printed fold.
+  const reach = Math.min(ca, p / 2);
   for (let c = 0; c < cornerX.length; c++) {
     const cx = cornerX[c];
     for (let i = 0; i < N; i++) {
       const fy = endMargin + rib + i * p + gap / 2;
-      const dir = (i % 2) === 0 ? 1 : -1;
-      const type = ((i + c) % 2) === 0 ? LAYER.FOLD_MOUNTAIN : LAYER.FOLD_VALLEY;
+      const mountain = ((i + c) % 2) === 0;
+      const dir = mountain ? 1 : -1;
+      const type = mountain ? LAYER.FOLD_MOUNTAIN : LAYER.FOLD_VALLEY;
       segments.push({
         type,
         layer: type,
         closed: false,
         points: [
-          { x: cx - ca, y: fy - dir * ca },
-          { x: cx + ca, y: fy + dir * ca },
+          { x: cx - reach, y: fy - dir * reach },
+          { x: cx + reach, y: fy + dir * reach },
         ],
       });
-      regions.push({ kind: 'CORNER_MITER', faceIndex: c, bbox: { x: cx - ca, y: fy - ca, w: 2 * ca, h: 2 * ca } });
+      regions.push({
+        kind: 'CORNER_MITER',
+        faceIndex: c,
+        bbox: { x: cx - reach, y: fy - reach, w: 2 * reach, h: 2 * reach },
+      });
     }
   }
 
