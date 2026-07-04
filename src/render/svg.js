@@ -97,41 +97,45 @@ function faceColumnRibs(shapes, face) {
 }
 
 /**
- * Trace ONE connected ladder outline for a constant-width column and return its
- * multi-subpath d-string: outer boundary grown OUTWARD by kerf/2, plus one middle
- * notch per inter-rib gap shrunk INWARD by kerf/2. The notch stops tabW short of each
- * lateral end, so the left/right rails stay solid and every rib is held by two
- * connector tabs (the column cuts as one snap-apart piece — fixes P0).
+ * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
+ * Ribs are left-aligned (straight left rail); the outer boundary follows each rib's own
+ * right edge with a tab jog across every gap, giving a per-pleat trapezoid for tapered
+ * bellows (P3). Outer grown OUTWARD by kerf/2; one middle notch per gap shrunk INWARD,
+ * clamped to the narrower adjacent rib so the connector tabs survive the width step.
  */
-function traceColumn(width, colX0, datum, ribCount, params) {
+function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
   const pit = rib + gap;
   const half = kerf / 2;
   const tabW = Math.min(2, params.cornerAllowance);
-  const xL = colX0;
-  const xR = colX0 + width;
-  const yTop0 = datum;
-  const yBotN = datum + (ribCount - 1) * pit + rib;
+  const N = ribs.length;
 
+  const rows = ribs.map((s, r) => {
+    const yTop = datum + r * pit;
+    return { xL: colX0, xR: colX0 + s.width, yTop, yBot: yTop + rib };
+  });
+
+  // Left rail straight down, then up the right side following each rib edge + tab jogs.
   const outer = [
-    { x: xL, y: yTop0 },
-    { x: xR, y: yTop0 },
-    { x: xR, y: yBotN },
-    { x: xL, y: yBotN },
+    { x: rows[0].xL, y: rows[0].yTop },
+    { x: rows[N - 1].xL, y: rows[N - 1].yBot },
   ];
-  const subs = [pathData(offsetFromCentre(outer, half), true)];
+  for (let r = N - 1; r >= 0; r--) {
+    outer.push({ x: rows[r].xR, y: rows[r].yBot });
+    outer.push({ x: rows[r].xR, y: rows[r].yTop });
+    if (r > 0) outer.push({ x: rows[r - 1].xR, y: rows[r].yTop }); // tab jog to next rib width
+  }
+  const subs = [pathData(offsetFromCentre(outer, half), true)]; // Z closes the top edge
 
-  for (let i = 0; i < ribCount - 1; i++) {
-    const gTop = datum + i * pit + rib; // bottom of rib i
-    const gBot = datum + (i + 1) * pit; // top of rib i+1
-    const nl = xL + tabW;
-    const nr = xR - tabW;
-    if (nr <= nl) continue; // rib narrower than two tabs: leave the gap solid (rare)
+  for (let i = 0; i < N - 1; i++) {
+    const nl = colX0 + tabW;
+    const nr = Math.min(rows[i].xR, rows[i + 1].xR) - tabW; // clamp to the narrower rib
+    if (nr <= nl) continue;
     const notch = [
-      { x: nl, y: gTop },
-      { x: nr, y: gTop },
-      { x: nr, y: gBot },
-      { x: nl, y: gBot },
+      { x: nl, y: rows[i].yBot },
+      { x: nr, y: rows[i].yBot },
+      { x: nr, y: rows[i + 1].yTop },
+      { x: nl, y: rows[i + 1].yTop },
     ];
     subs.push(pathData(offsetFromCentre(notch, -half), true));
   }
@@ -177,8 +181,10 @@ export function renderRibLadderSVG(model, params) {
   let maxRight = 0;
 
   for (const col of columns) {
-    const width = col.ribs[0].width; // constant per column for now; taper handled later
-    const d = traceColumn(width, colX0, datum, col.ribs.length, params);
+    const width = Math.max(...col.ribs.map((r) => r.width)); // widest pleat for layout
+    col.x0 = colX0;   // expose the column left edge to Phase 6 (spine/labels/calibration)
+    col.width = width;
+    const d = traceColumn(col.ribs, colX0, datum, params);
     cutPaths.push(
       `<path data-role="ladder" data-face="${col.face}" data-qty="2" fill-rule="evenodd" d="${d}"/>`
     );
