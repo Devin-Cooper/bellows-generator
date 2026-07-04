@@ -1,5 +1,3 @@
-import { computeRibCount } from './geometry/metrics.js';
-
 export const DEFAULT_PARAMS = {
   type: 'straight',
   frontW: 150, frontH: 150, rearW: 150, rearH: 150,
@@ -13,7 +11,9 @@ export const DEFAULT_PARAMS = {
 export const A6_PRESET = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115, rearW: 160, rearH: 115 };
 
 /**
- * Lock rear=front for straight bellows and resolve a null ribCount. Pure (returns a copy).
+ * Lock rear=front for straight bellows. Pure (returns a copy).
+ * A null ribCount is left as null (auto) so downstream computeRibCount/computeMetrics
+ * can re-derive it on demand — preserving live tracking of maxDraw changes.
  * @param {Object} params
  * @returns {Object}
  */
@@ -23,7 +23,6 @@ export function normalizeParams(params) {
     p.rearW = p.frontW;
     p.rearH = p.frontH;
   }
-  p.ribCount = computeRibCount(p);
   return p;
 }
 

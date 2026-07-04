@@ -45,6 +45,12 @@ describe('computeMetrics', () => {
     expect(m.flatSheet).toEqual({ w: 610, h: 430 });
   });
 
+  it('re-derives ribCount when maxDraw changes with null ribCount (auto)', () => {
+    // round((450*1.2 - 12)/14.5) + 1 = round(528/14.5) + 1 = round(36.41) + 1 = 36 + 1 = 37
+    const m = computeMetrics({ ...FULL, maxDraw: 450 });
+    expect(m.ribCount).toBe(37);
+  });
+
   it('warns above 20mm collapse but not on kerf by default', () => {
     const m = computeMetrics({ ...FULL });
     expect(m.warnings).toContain('>20mm collapse');

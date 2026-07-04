@@ -74,4 +74,14 @@ describe('buildControlPanel', () => {
     const prevented = !el.dispatchEvent(new Event('submit', { cancelable: true }));
     expect(prevented).toBe(true);
   });
+
+  it('changing maxDraw keeps ribCount null (auto) in onChange payload — not pinned to initial value', () => {
+    const onChange = vi.fn();
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS }, onChange });
+    const maxDraw = el.querySelector('[data-key="maxDraw"]');
+    maxDraw.value = '450';
+    maxDraw.dispatchEvent(new Event('input'));
+    const last = onChange.mock.calls.at(-1)[0];
+    expect(last.ribCount).toBeNull();
+  });
 });

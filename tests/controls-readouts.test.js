@@ -38,4 +38,18 @@ describe('formatReadouts', () => {
       .find((r) => r.label === 'Collapsed thickness');
     expect(ok.warn).toBe(false);
   });
+
+  it('appends a kerf>=gap warn row when that warning is present', () => {
+    const rows = formatReadouts({ ...metrics, warnings: ['kerf>=gap'] });
+    const kerfRow = rows.find((r) => r.warn && r.value.includes('kerf'));
+    expect(kerfRow).toBeDefined();
+    expect(kerfRow.warn).toBe(true);
+    expect(kerfRow.label).toBe('Warning');
+  });
+
+  it('does not duplicate the >20mm collapse warning as a separate row', () => {
+    const rows = formatReadouts({ ...metrics, warnings: ['>20mm collapse'] });
+    const warningRows = rows.filter((r) => r.label === 'Warning');
+    expect(warningRows.length).toBe(0);
+  });
 });

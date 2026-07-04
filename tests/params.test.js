@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_PARAMS, A6_PRESET, normalizeParams } from '../src/params.js';
+import { computeRibCount, computeMetrics } from '../src/geometry/metrics.js';
 
 describe('DEFAULT_PARAMS', () => {
   it('carries the contract defaults', () => {
@@ -35,9 +36,17 @@ describe('normalizeParams', () => {
     expect(n.rearH).toBe(115);
   });
 
-  it('resolves a null ribCount to the auto value', () => {
+  it('leaves a null ribCount as null (auto — resolved downstream by computeMetrics)', () => {
     const n = normalizeParams({ ...DEFAULT_PARAMS });
-    expect(n.ribCount).toBe(25);
+    expect(n.ribCount).toBeNull();
+  });
+
+  it('computeRibCount resolves null ribCount from DEFAULT_PARAMS to 25', () => {
+    expect(computeRibCount({ ...DEFAULT_PARAMS })).toBe(25);
+  });
+
+  it('computeMetrics resolves null ribCount from DEFAULT_PARAMS to 25', () => {
+    expect(computeMetrics({ ...DEFAULT_PARAMS }).ribCount).toBe(25);
   });
 
   it('keeps an explicit ribCount override', () => {

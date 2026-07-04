@@ -1,8 +1,12 @@
 // src/ui/controls.js
 import { DEFAULT_PARAMS, A6_PRESET, normalizeParams } from '../params.js';
 
+const WARNING_MESSAGES = {
+  'kerf>=gap': 'kerf ≥ gap — cut will eat the inter-rib gap',
+};
+
 export function formatReadouts(metrics) {
-  return [
+  const rows = [
     { label: 'Flat pleated length', value: `${metrics.flatPleatedLength.toFixed(1)} mm` },
     { label: 'Usable draw', value: `${metrics.usableDraw.toFixed(1)} mm` },
     {
@@ -17,6 +21,12 @@ export function formatReadouts(metrics) {
       value: `${metrics.flatSheet.w.toFixed(0)} × ${metrics.flatSheet.h.toFixed(0)} mm`,
     },
   ];
+  for (const w of metrics.warnings) {
+    if (w === '>20mm collapse') continue; // already flagged on the Collapsed thickness row
+    const msg = WARNING_MESSAGES[w] || w;
+    rows.push({ label: 'Warning', value: msg, warn: true });
+  }
+  return rows;
 }
 
 const GROUPS = [
