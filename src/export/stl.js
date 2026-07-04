@@ -50,6 +50,7 @@ export function computeRibOutlines(model, params) {
   const p = normalizeParams(params);
   const shapes = computeRibShapes(p);
   const off = p.printOffset;
+  const bed = p.bedSize;
   const z0 = 0;
   const z1 = p.ribThickness;
 
@@ -67,21 +68,55 @@ export function computeRibOutlines(model, params) {
   let xCursor = 0;
   for (const [face, ribs] of [['W', byFace.W], ['H', byFace.H]]) {
     if (!ribs.length) continue;
-    let yCursor = 0;
-    let maxW = 0;
-    for (const s of ribs) {
-      const ext = yExtent(s.points);
-      const depth = ext.max - ext.min;
-      const cx = xCenter(s.points);
-      const pts = insetPolygon(s.points, off).map((pt) => ({
-        x: pt.x - cx + xCursor,      // recentre column at xCursor
-        y: pt.y - ext.min + yCursor, // stack at pitch, segment-local y starts at 0
-      }));
-      solids.push({ kind: 'rib', face, ribIndex: s.ribIndex, segmentIndex: 0, points: pts, z0, z1 });
-      maxW = Math.max(maxW, widthOf(s.points));
-      yCursor += depth + p.gap;
+    let segStart = 0;
+    let segIndex = 0;
+    while (segStart < ribs.length) {
+      // BED-WRAP: grow the segment until the next rib would overrun bedSize (always >=1 rib)
+      let segLen = 0;
+      let segEnd = segStart;
+      while (segEnd < ribs.length) {
+        const ext = yExtent(ribs[segEnd].points);
+        const depth = ext.max - ext.min;
+        const add = segEnd === segStart ? depth : p.gap + depth;
+        if (segEnd > segStart && segLen + add > bed) break;
+        segLen += add;
+        segEnd++;
+      }
+      // place ribs [segStart, segEnd) as one bed-fitting breakaway piece
+      let yCursor = 0;
+      let maxW = 0;
+      const spans = [];
+      for (let k = segStart; k < segEnd; k++) {
+        const s = ribs[k];
+        const ext = yExtent(s.points);
+        const depth = ext.max - ext.min;
+        const cx = xCenter(s.points);
+        const pts = insetPolygon(s.points, off).map((pt) => ({
+          x: pt.x - cx + xCursor,      // recentre column at xCursor
+          y: pt.y - ext.min + yCursor, // segment-local y starts at 0
+        }));
+        solids.push({ kind: 'rib', face, ribIndex: s.ribIndex, segmentIndex: segIndex, points: pts, z0, z1 });
+        spans.push({ yEnd: yCursor + depth });
+        maxW = Math.max(maxW, widthOf(s.points));
+        yCursor += depth + p.gap;
+      }
+      // CONNECTED breakaway bridges: one thin tab across each intra-segment gap (none
+      // across the bed boundary, so each segment is one placeable, snap-apart object).
+      for (let k = 0; k < spans.length - 1; k++) {
+        const y0 = spans[k].yEnd;
+        const y1 = y0 + p.gap;
+        const bx0 = xCursor - BRIDGE_WIDTH / 2;
+        const bx1 = xCursor + BRIDGE_WIDTH / 2;
+        solids.push({
+          kind: 'bridge', face, ribIndex: ribs[segStart + k].ribIndex, segmentIndex: segIndex,
+          points: [{ x: bx0, y: y0 }, { x: bx1, y: y0 }, { x: bx1, y: y1 }, { x: bx0, y: y1 }],
+          z0, z1,
+        });
+      }
+      xCursor += maxW + PLATE_MARGIN;
+      segIndex++;
+      segStart = segEnd;
     }
-    xCursor += maxW + PLATE_MARGIN;
   }
   return solids;
 }
