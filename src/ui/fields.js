@@ -14,22 +14,22 @@ export const FIELDS = {
   frontW: {
     label: 'Front width',
     unit: 'mm',
-    hint: 'The front (lens-end) opening.',
+    hint: 'Width of the front (lens-end) opening.',
   },
   frontH: {
     label: 'Front height',
     unit: 'mm',
-    hint: 'The front (lens-end) opening.',
+    hint: 'Height of the front (lens-end) opening.',
   },
   rearW: {
     label: 'Rear width',
     unit: 'mm',
-    hint: 'Rear (image-end) opening; locked to front for straight.',
+    hint: 'Width of the rear (image-end) opening; locked to front for straight bellows.',
   },
   rearH: {
     label: 'Rear height',
     unit: 'mm',
-    hint: 'Rear (image-end) opening; locked to front for straight.',
+    hint: 'Height of the rear (image-end) opening; locked to front for straight bellows.',
   },
   maxDraw: {
     label: 'Working draw (extended)',
@@ -104,7 +104,7 @@ export const FIELDS = {
   pageSize: {
     label: 'PDF page size',
     unit: '',
-    hint: 'A4 / A3 / Letter.',
+    hint: 'Output PDF sheet size; sets how the pattern is tiled across pages.',
     kind: 'select',
     options: ['A4', 'A3', 'Letter'],
   },
