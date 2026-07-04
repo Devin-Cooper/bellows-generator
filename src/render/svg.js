@@ -168,11 +168,13 @@ function traceColumn(ribs, colX0, datum, params) {
  */
 export function renderRibLadderSVG(model, params) {
   const shapes = computeRibShapes(params);
-  const { rib, gap, kerf } = params;
+  const { rib, gap, kerf, cornerAllowance: ca, endMargin } = params;
+  const f = fmt;                    // Phase-6 snippets use f(); fmt is the module formatter
   const pit = rib + gap;
-  const margin = 5;
+  const pitch = pit;                // Phase-6 snippets use pitch; pit = rib + gap
+  const margin = 5;                 // lateral sheet padding (x/side only)
+  const datum = endMargin;          // shared y-origin with the fabric ENGRAVE footprints (registration)
   const gutter = 10;
-  const datum = margin; // Phase 6 aligns this to the fabric endMargin datum
 
   const wRibs = faceColumnRibs(shapes, 'W');
   const hRibs = faceColumnRibs(shapes, 'H');
@@ -216,7 +218,8 @@ export function renderRibLadderSVG(model, params) {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
-    `width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="0 0 ${fmt(w)} ${fmt(h)}">` +
+    `data-datum="${f(datum)}" ` +
+    `width="${f(w)}mm" height="${f(h)}mm" viewBox="0 0 ${f(w)} ${f(h)}">` +
     `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
     `stroke="${LAYER_COLORS[cut]}" fill="none">` +
     cutPaths.join('') +
