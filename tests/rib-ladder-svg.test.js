@@ -37,7 +37,7 @@ function outerBBox(d) {
 
 describe('renderRibLadderSVG — connected outline (P0)', () => {
   it('cuts each column as ONE connected path, not loose rects', () => {
-    const { svg, metrics } = ladder({ frontW: 160, frontH: 115 });
+    const { svg, metrics, params } = ladder({ frontW: 160, frontH: 115 });
     expect(svg.includes('data-role="rib"')).toBe(false); // no confetti rib rects
     expect(svg.includes('data-role="tab"')).toBe(false);  // no confetti tab rects
     expect(ladderPaths(svg, 'W').length).toBe(1);
@@ -47,11 +47,16 @@ describe('renderRibLadderSVG — connected outline (P0)', () => {
     expect((dW.match(/M /g) || []).length).toBe(metrics.ribCount);
     // the notches leave connector tabs: each notch is narrower than the rib band
     const subs = dW.split('Z').filter((s) => s.trim().length);
-    const outerW = outerBBox(dW).maxX - outerBBox(dW).minX;
+    const bb = outerBBox(dW);
+    const outerW = bb.maxX - bb.minX;
     const notch = subs[1].match(/-?[\d.]+/g).map(Number);
     const notchXs = notch.filter((_, i) => i % 2 === 0);
     const notchW = Math.max(...notchXs) - Math.min(...notchXs);
     expect(notchW).toBeLessThan(outerW); // tabs remain on both ends
+    // pin the connector-tab width exactly: each rail must survive at tabW + kerf
+    const tabW = Math.min(2, params.cornerAllowance);
+    expect(Math.min(...notchXs) - bb.minX).toBeCloseTo(tabW + params.kerf, 4);  // left tab
+    expect(bb.maxX - Math.max(...notchXs)).toBeCloseTo(tabW + params.kerf, 4);  // right tab
   });
 
   it('emits BOTH W and H rib families (P5)', () => {
