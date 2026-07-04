@@ -215,6 +215,22 @@ export function renderRibLadderSVG(model, params) {
   const h = datum + (ribCount - 1) * pit + rib + kerf / 2 + margin;
   const cut = LAYER.CUT;
 
+  const stackH = (ribCount - 1) * pitch + rib;
+
+  const spineMarks = columns
+    .map((col) => {
+      const cx = col.x0 + col.width / 2;
+      return (
+        `<line data-role="spine" data-face="${col.face}" ` +
+        `x1="${f(cx)}" y1="${f(datum)}" x2="${f(cx)}" y2="${f(datum + stackH)}"/>`
+      );
+    })
+    .join('');
+
+  const spineGroup =
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_VALLEY}" ` +
+    `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spineMarks}</g>`;
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
@@ -227,6 +243,8 @@ export function renderRibLadderSVG(model, params) {
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
     `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">` +
     notes.join('') +
-    `</g></svg>`
+    `</g>` +
+    spineGroup +
+    `</svg>`
   );
 }
