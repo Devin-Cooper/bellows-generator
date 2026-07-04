@@ -13,11 +13,13 @@ vi.mock('../src/geometry/index.js', () => ({
       flatSheet: { w: 610, h: 430 },
       warnings: [],
     },
+    bounds: { w: 610, h: 430 },
   })),
   buildFoldModel: vi.fn(() => ({ positions: [], indices: [], axialLength: 0, extension: 1 })),
 }));
 vi.mock('../src/render/svg.js', () => ({
   renderPatternSVG: vi.fn(() => '<svg data-mock="1"></svg>'),
+  renderRibLadderSVG: vi.fn(() => '<svg data-rib="1"></svg>'),
 }));
 vi.mock('../src/render/three.js', () => ({
   BellowsViewer: vi.fn(function BellowsViewer() {
@@ -26,11 +28,34 @@ vi.mock('../src/render/three.js', () => ({
     this.dispose = vi.fn();
   }),
 }));
+vi.mock('../src/ui/preview.js', () => ({
+  mountPreview: vi.fn((container, opts) => {
+    container.innerHTML = opts.patternSVG;
+    return {
+      toggleLayer: vi.fn(),
+      setGridVisible: vi.fn(),
+      destroy: vi.fn(),
+    };
+  }),
+}));
+vi.mock('../src/export/download.js', () => ({
+  makeSVGBlob: vi.fn((svg) => new Blob([svg], { type: 'image/svg+xml' })),
+  downloadBlob: vi.fn(),
+  triggerDownload: vi.fn(),
+}));
+vi.mock('../src/export/pdf.js', () => ({
+  exportTiledPDF: vi.fn(async () => new Uint8Array([0, 1, 2])),
+}));
+vi.mock('../src/export/stl.js', () => ({
+  exportRibsSTL: vi.fn(() => new ArrayBuffer(12)),
+}));
 
 import { initApp } from '../src/ui/state.js';
 import { buildPatternModel, buildFoldModel } from '../src/geometry/index.js';
 import { renderPatternSVG } from '../src/render/svg.js';
 import { BellowsViewer } from '../src/render/three.js';
+import { mountPreview } from '../src/ui/preview.js';
+import { downloadBlob, triggerDownload } from '../src/export/download.js';
 
 describe('initApp', () => {
   beforeEach(() => {
@@ -68,5 +93,63 @@ describe('initApp', () => {
     const url = spy.mock.calls.at(-1)[2];
     expect(url.startsWith('/bellows-generator/')).toBe(true);
     expect(url).toContain('maxDraw=250');
+  });
+
+  it('collapse slider calls viewer.setExtension with the slider value', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    const viewer = BellowsViewer.mock.instances[0];
+    const slider = root.querySelector('input[type="range"]');
+    slider.value = '0.5';
+    slider.dispatchEvent(new Event('input'));
+    expect(viewer.setExtension).toHaveBeenCalledWith(0.5);
+  });
+
+  it('onExport svg triggers downloadBlob with the fold-pattern filename', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    root.querySelector('[data-export="svg"]').click();
+    expect(downloadBlob).toHaveBeenCalled();
+    expect(downloadBlob.mock.calls[0][1]).toBe('bellows-fold-pattern.svg');
+  });
+
+  it('onExport svg-ribs triggers downloadBlob with the rib-ladder filename', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    root.querySelector('[data-export="svg-ribs"]').click();
+    expect(downloadBlob).toHaveBeenCalled();
+    expect(downloadBlob.mock.calls[0][1]).toBe('bellows-rib-ladder.svg');
+  });
+
+  it('onExport stl triggers triggerDownload with the stl filename', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    root.querySelector('[data-export="stl"]').click();
+    expect(triggerDownload).toHaveBeenCalled();
+    expect(triggerDownload.mock.calls[0][1]).toBe('bellows-ribs.stl');
+  });
+
+  it('mountPreview is called on initial render and reuses destroy-before-remount on recompute', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    // Initial render: mountPreview called once
+    expect(mountPreview).toHaveBeenCalledTimes(1);
+
+    // Trigger a debounced recompute
+    const input = root.querySelector('[data-key="maxDraw"]');
+    input.value = '280';
+    input.dispatchEvent(new Event('input'));
+    vi.runAllTimers();
+
+    // After recompute mountPreview is called again (destroy-before-remount)
+    expect(mountPreview).toHaveBeenCalledTimes(2);
+    // The first api's destroy was called before re-mounting
+    const firstApi = mountPreview.mock.results[0].value;
+    expect(firstApi.destroy).toHaveBeenCalledTimes(1);
   });
 });

@@ -93,7 +93,7 @@ export function buildControlPanel(opts = {}) {
 
   const exportBar = document.createElement('div');
   exportBar.className = 'export-bar';
-  for (const kind of ['svg', 'pdf', 'stl']) {
+  for (const kind of ['svg', 'svg-ribs', 'pdf', 'stl']) {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.export = kind;
