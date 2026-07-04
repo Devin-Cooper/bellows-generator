@@ -60,3 +60,24 @@ describe('normalizeParams', () => {
     expect(input.ribCount).toBeNull();
   });
 });
+
+describe('stiffener params (cornerMode / bedSize / printOffset)', () => {
+  it('DEFAULT_PARAMS carries the pinned stiffener defaults', () => {
+    expect(DEFAULT_PARAMS.cornerMode).toBe('clear');
+    expect(DEFAULT_PARAMS.bedSize).toBe(220);
+    expect(DEFAULT_PARAMS.printOffset).toBe(0.1);
+  });
+
+  it('normalizeParams passes the stiffener params through unchanged', () => {
+    const n = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'pointed', bedSize: 256, printOffset: 0.2 });
+    expect(n.cornerMode).toBe('pointed');
+    expect(n.bedSize).toBe(256);
+    expect(n.printOffset).toBe(0.2);
+  });
+
+  it('A6_PRESET inherits the stiffener defaults', () => {
+    expect(A6_PRESET.cornerMode).toBe('clear');
+    expect(A6_PRESET.bedSize).toBe(220);
+    expect(A6_PRESET.printOffset).toBe(0.1);
+  });
+});

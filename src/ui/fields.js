@@ -63,6 +63,13 @@ export const FIELDS = {
     unit: 'mm',
     hint: 'Unstiffened corner zone so the 45° fold can form.',
   },
+  cornerMode: {
+    label: 'Corner stiffening',
+    unit: '',
+    hint: 'Clear = open corners (default); pointed = crisp mitered corner points (thicker fold pack); alternating = wide/narrow points to save corner bulk.',
+    kind: 'select',
+    options: ['clear', 'pointed', 'alternating'],
+  },
   glueTab: {
     label: 'Glue tab',
     unit: 'mm',
@@ -90,6 +97,17 @@ export const FIELDS = {
     unit: 'mm',
     hint: 'Cut width; cut paths grow outward by half this.',
     step: 0.01,
+  },
+  bedSize: {
+    label: '3D print bed',
+    unit: 'mm',
+    hint: 'Print bed length; rib columns longer than this are split into bed-fitting segments.',
+  },
+  printOffset: {
+    label: '3D print offset',
+    unit: 'mm',
+    hint: 'Inward shrink on printed ribs to counter over-extrusion / elephant-foot (opposite sign to the laser kerf).',
+    step: 0.1,
   },
   focalLength: {
     label: 'Lens focal length',

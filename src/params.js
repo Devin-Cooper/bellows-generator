@@ -6,6 +6,11 @@ export const DEFAULT_PARAMS = {
   glueTab: 10, endMargin: 35,
   fabricThickness: 0.5, ribThickness: 0.4, kerf: 0.15,
   focalLength: 150, opticalOffset: 40, pageSize: 'A4',
+  // Stiffener overhaul: corner-point mode + 3D-print bed/offset.
+  // cornerMode: 'clear' (default) | 'pointed' | 'alternating' — Phase 5 adds the
+  // non-clear geometry. bedSize = 3D print bed (mm) for column bed-wrap (Phase 4).
+  // printOffset = inward 3D offset (mm), opposite sign to laser kerf (Phase 4).
+  cornerMode: 'clear', bedSize: 220, printOffset: 0.1,
 };
 
 export const A6_PRESET = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115, rearW: 160, rearH: 115 };
