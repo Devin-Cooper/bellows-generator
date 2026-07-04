@@ -401,7 +401,7 @@ body {
   .app-shell {
     display: grid;
     grid-template-columns: 280px 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     height: 100vh;
     min-height: 100vh;
   }
@@ -410,12 +410,13 @@ body {
 
   .help-panel {
     grid-column: 1 / -1;
+    grid-row: 2;
     margin: 0 var(--space-3) var(--space-3);
   }
 
   .controls {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 3;
     border-right: 1px solid var(--border);
     border-bottom: none;
     overflow-y: auto;
@@ -424,7 +425,7 @@ body {
 
   .preview-area {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 3;
     overflow-y: auto;
     min-height: 0;
   }

@@ -215,16 +215,6 @@ export function buildAppShell(opts = {}) {
   root.append(headerEl, helpPanel, panelHost, previewArea, segmentedBar);
 
   // --- View + hints state ---------------------------------------------------
-  function applyActiveClasses() {
-    for (const el of root.querySelectorAll('[data-view]')) {
-      const match = el.dataset.view === activeView;
-      el.classList.toggle('is-active', match);
-      if (el.getAttribute('role') === 'tab') {
-        el.setAttribute('aria-selected', String(match));
-      }
-    }
-  }
-
   function setActiveView(view) {
     const changed = view !== activeView;
     activeView = view;

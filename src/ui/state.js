@@ -128,9 +128,11 @@ export function initApp(rootEl) {
   function doRecompute() {
     const model = buildPatternModel(params);
     const patternSVG = renderPatternSVG(model, params);
+    // Capture state before destroying so we can seed the remount.
+    const prevState = previewApi?.getState();
     // Destroy before re-mounting to prevent listener accumulation.
     previewApi?.destroy();
-    previewApi = mountPreview(svgHost, { patternSVG, model, params });
+    previewApi = mountPreview(svgHost, { patternSVG, model, params, initialState: prevState });
     if (panel) panel.setReadouts(model.metrics);
     viewer.params = params;
     viewer.setFoldModel(buildFoldModel(params, extension));

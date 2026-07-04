@@ -35,6 +35,7 @@ vi.mock('../src/ui/preview.js', () => ({
       toggleLayer: vi.fn(),
       setGridVisible: vi.fn(),
       resetView: vi.fn(),
+      getState: vi.fn(() => null),
       destroy: vi.fn(),
     };
   }),

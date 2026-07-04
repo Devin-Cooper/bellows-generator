@@ -34,25 +34,4 @@ if (typeof window !== 'undefined') {
     writable: true,
     configurable: true,
   });
-
-  const ss = (() => {
-    if (window.sessionStorage && typeof window.sessionStorage.clear === 'function') {
-      return window.sessionStorage;
-    }
-    const store = Object.create(null);
-    return {
-      getItem: (k) => (k in store ? store[k] : null),
-      setItem: (k, v) => { store[k] = String(v); },
-      removeItem: (k) => { delete store[k]; },
-      clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
-      key: (i) => Object.keys(store)[i] ?? null,
-      get length() { return Object.keys(store).length; },
-    };
-  })();
-
-  Object.defineProperty(globalThis, 'sessionStorage', {
-    value: ss,
-    writable: true,
-    configurable: true,
-  });
 }

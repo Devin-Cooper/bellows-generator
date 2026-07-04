@@ -39,7 +39,7 @@ vi.mock('../src/ui/controls.js', () => ({
 vi.mock('../src/ui/preview.js', () => ({
   mountPreview: vi.fn((container, mountOpts) => {
     container.innerHTML = mountOpts.patternSVG;
-    return { toggleLayer: vi.fn(), setGridVisible: vi.fn(), resetView: vi.fn(), destroy: vi.fn() };
+    return { toggleLayer: vi.fn(), setGridVisible: vi.fn(), resetView: vi.fn(), getState: vi.fn(() => null), destroy: vi.fn() };
   }),
   buildPreviewToolbar: vi.fn(() => {
     const bar = document.createElement('div');

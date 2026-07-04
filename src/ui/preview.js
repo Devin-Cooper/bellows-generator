@@ -75,7 +75,14 @@ export function mountPreview(container, options) {
   const bounds = model.bounds;
   const grid = computePageGrid(bounds, params.pageSize, options.overlap ?? 10);
   const opts = { patternSVG, bounds, grid };
-  const state = { zoom: 1, panX: 0, panY: 0, hidden: new Set(), showGrid: true };
+  const init = options.initialState ?? {};
+  const state = {
+    zoom: init.zoom ?? 1,
+    panX: init.panX ?? 0,
+    panY: init.panY ?? 0,
+    hidden: new Set(init.hidden ?? []),
+    showGrid: init.showGrid ?? true,
+  };
   const ac = new AbortController();
   const render = () => {
     container.innerHTML = composePreview(opts, state);

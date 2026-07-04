@@ -41,6 +41,7 @@ vi.mock('../src/ui/preview.js', async () => {
         toggleLayer: (t) => toggleLayer(mountCount, t),
         setGridVisible: (v) => setGridVisible(mountCount, v),
         resetView: () => resetView(mountCount),
+        getState: vi.fn(() => null),
         destroy: vi.fn(),
       };
     }),
