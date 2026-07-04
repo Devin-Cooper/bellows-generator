@@ -8,6 +8,9 @@ import { computeRibShapes } from '../geometry/ribShapes.js';
 const BRIDGE_WIDTH = 2;
 // Plate margin (mm) between side-by-side family / bed-segment columns.
 const PLATE_MARGIN = 10;
+// How far (mm) each breakaway bridge penetrates INTO both neighbouring ribs so the three
+// solids are truly fused (a positive overlap, never a zero-width kiss). Small vs rib depth.
+const BRIDGE_OVERLAP = 0.1;
 
 const xs = (pts) => pts.map((p) => p.x);
 const ys = (pts) => pts.map((p) => p.y);
@@ -96,15 +99,21 @@ export function computeRibOutlines(model, params) {
           y: pt.y - ext.min + yCursor, // segment-local y starts at 0
         }));
         solids.push({ kind: 'rib', face, ribIndex: s.ribIndex, segmentIndex: segIndex, points: pts, z0, z1 });
-        spans.push({ yEnd: yCursor + depth });
+        // record the placed rib's INSET y-extent (printOffset shrinks it inward) so bridges
+        // attach to the real edges, not the pre-inset rib depth.
+        const insetExt = yExtent(pts);
+        spans.push({ yMin: insetExt.min, yMax: insetExt.max });
         maxW = Math.max(maxW, widthOf(s.points));
         yCursor += depth + p.gap;
       }
       // CONNECTED breakaway bridges: one thin tab across each intra-segment gap (none
       // across the bed boundary, so each segment is one placeable, snap-apart object).
+      // Span from just inside the lower rib's inset top edge to just inside the upper rib's
+      // inset bottom edge (BRIDGE_OVERLAP each side) so the tab is fused to both, even when
+      // printOffset>0 has pulled the inset ribs apart.
       for (let k = 0; k < spans.length - 1; k++) {
-        const y0 = spans[k].yEnd;
-        const y1 = y0 + p.gap;
+        const y0 = spans[k].yMax - BRIDGE_OVERLAP;
+        const y1 = spans[k + 1].yMin + BRIDGE_OVERLAP;
         const bx0 = xCursor - BRIDGE_WIDTH / 2;
         const bx1 = xCursor + BRIDGE_WIDTH / 2;
         solids.push({

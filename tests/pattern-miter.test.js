@@ -45,6 +45,19 @@ describe('straight corner-miter reach (P6)', () => {
       expect(dx / 2).toBeLessThanOrEqual(ca + 1e-9); // half-reach within corner allowance
     }
   });
+
+  it('clamps half-reach to cornerAllowance when ca < pitch/2 (exercises the ca branch)', () => {
+    // reach = min(ca, pitch/2); pitch/2 = 7.25, so ca=5 selects the ca term (the ca<pitch/2
+    // branch the ca=15 cases never hit). Pins that small-ca users' crease stays inside the
+    // corner-allowance zone.
+    const model = buildPatternModel({ ...A6, cornerAllowance: 5 });
+    const ds = diagonals(model);
+    expect(ds.length).toBeGreaterThan(0);
+    for (const s of ds) {
+      const halfReach = Math.abs(s.points[1].x - s.points[0].x) / 2;
+      expect(halfReach).toBeCloseTo(5, 9); // clamps to ca (5), NOT pitch/2 (7.25)
+    }
+  });
 });
 
 describe('straight corner-miter tilt (P7)', () => {

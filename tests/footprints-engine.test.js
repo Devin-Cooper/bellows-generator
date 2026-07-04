@@ -72,7 +72,10 @@ describe('tapered footprints re-derived from computeRibShapes (P3b)', () => {
         .map((s) => round2(s.width))
     ); // {170,132.5,82.5,70} = wFold - 2*ca
     const widths = engraves(model).map((s) => round2(widthOf(s)));
-    expect(widths.some((w) => wWidths.has(w))).toBe(true); // e.g. 170 at the rear W column
+    // Universal: EVERY per-pleat engine width must appear among the rendered footprints,
+    // so a no-taper regression (all ribs one constant width) can't slip through.
+    const near = (target) => widths.some((w) => Math.abs(w - target) <= 1e-6);
+    for (const w of wWidths) expect(near(w)).toBe(true); // {170,132.5,82.5,70} all present
     expect(widths.some((w) => w === 200)).toBe(false); // no un-inset full-fold tick
   });
 });

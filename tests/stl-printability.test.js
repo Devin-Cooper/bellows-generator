@@ -58,4 +58,32 @@ describe('STL printability — connected breakaway bridges', () => {
       expect(w).toBeLessThanOrEqual(2 + 1e-9);
     }
   });
+
+  // Regression: at printOffset>0 the ribs shrink inward in y, so a bridge whose y-span was
+  // derived from the PRE-inset rib depth floats off both neighbours (a detached island).
+  // Each bridge must physically overlap BOTH adjacent inset ribs.
+  it.each([0.1, 0.5])('bridges stay fused to both adjacent inset ribs at printOffset=%s', (printOffset) => {
+    const outs = computeRibOutlines(model, { ...base, bedSize: 1000, printOffset });
+    const yMin = (o) => Math.min(...o.points.map((p) => p.y));
+    const yMax = (o) => Math.max(...o.points.map((p) => p.y));
+    const ribAt = (face, seg, ribIndex) =>
+      outs.find((o) => o.kind === 'rib' && o.face === face && o.segmentIndex === seg && o.ribIndex === ribIndex);
+
+    const bridges = outs.filter((o) => o.kind === 'bridge');
+    expect(bridges.length).toBeGreaterThan(0);
+    for (const b of bridges) {
+      // ribs of this face+segment sorted by ribIndex; bridge.ribIndex is the LOWER rib.
+      const segRibs = outs
+        .filter((o) => o.kind === 'rib' && o.face === b.face && o.segmentIndex === b.segmentIndex)
+        .sort((a, c) => a.ribIndex - c.ribIndex);
+      const li = segRibs.findIndex((o) => o.ribIndex === b.ribIndex);
+      const lower = segRibs[li];
+      const upper = segRibs[li + 1];
+      expect(lower).toBeDefined();
+      expect(upper).toBeDefined();
+      // bridge must reach down into the lower rib and up into the upper rib (no gap).
+      expect(yMin(b)).toBeLessThanOrEqual(yMax(lower));
+      expect(yMax(b)).toBeGreaterThanOrEqual(yMin(upper));
+    }
+  });
 });

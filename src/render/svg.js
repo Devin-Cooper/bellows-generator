@@ -183,11 +183,15 @@ export function renderRibLadderSVG(model, params) {
   const sameWidths =
     wRibs.length === hRibs.length &&
     wRibs.every((r, i) => Math.abs(r.width - hRibs[i].width) < 1e-9);
+  // Quantity = number of WALLS a ladder column represents. A normal (un-merged) W or H
+  // column is 2 identical walls (x2). When W and H dedupe into one merged square column
+  // it stands in for all 4 walls of the ring (x4) — else the sheet would specify only 2
+  // strips for a 4-wall square tube.
   const columns = sameWidths
-    ? [{ face: 'W', label: 'W/H', ribs: wRibs }]
+    ? [{ face: 'W', label: 'W/H', ribs: wRibs, qty: 4 }]
     : [
-        { face: 'W', label: 'W', ribs: wRibs },
-        { face: 'H', label: 'H', ribs: hRibs },
+        { face: 'W', label: 'W', ribs: wRibs, qty: 2 },
+        { face: 'H', label: 'H', ribs: hRibs, qty: 2 },
       ];
 
   const cutPaths = [];
@@ -201,11 +205,11 @@ export function renderRibLadderSVG(model, params) {
     col.width = width;
     const d = traceColumn(col.ribs, colX0, datum, params);
     cutPaths.push(
-      `<path data-role="ladder" data-face="${col.face}" data-qty="2" fill-rule="evenodd" d="${d}"/>`
+      `<path data-role="ladder" data-face="${col.face}" data-qty="${col.qty}" fill-rule="evenodd" d="${d}"/>`
     );
     notes.push(
       `<text data-role="qty" data-face="${col.face}" ` +
-        `x="${fmt(colX0)}" y="${fmt(datum - 1.5)}">${col.label} cut x2</text>`
+        `x="${fmt(colX0)}" y="${fmt(datum - 1.5)}">${col.label} cut x${col.qty}</text>`
     );
     maxRight = colX0 + width + kerf / 2;
     colX0 = colX0 + width + kerf + gutter;
