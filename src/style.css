@@ -520,6 +520,17 @@ body {
   .extension-label {
     flex: 0 0 auto;
   }
+
+  /* Phone preview toolbar scrolls horizontally so all toggles are reachable. */
+  .preview-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .preview-toolbar .toggle,
+  .preview-toolbar .btn {
+    flex: 0 0 auto;
+  }
 }
 
 /* Tablet and up: two columns, hide the phone segmented bar, both regions visible;
