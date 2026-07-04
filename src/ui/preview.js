@@ -213,3 +213,52 @@ export function mountPreview(container, options) {
     },
   };
 }
+
+/**
+ * Build a styled preview toolbar wired to a mountPreview api: one .toggle per
+ * layer, a page-grid .toggle, and a .btn reset. Returned element is mounted by
+ * state.js/appShell under the active flat preview.
+ */
+export function buildPreviewToolbar(api, options = {}) {
+  const layers = options.layers ?? [];
+  const bar = document.createElement('div');
+  bar.className = 'preview-toolbar';
+
+  for (const { type, label } of layers) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toggle';
+    btn.dataset.layer = type;
+    btn.setAttribute('aria-pressed', 'true');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      const on = btn.getAttribute('aria-pressed') === 'true';
+      btn.setAttribute('aria-pressed', on ? 'false' : 'true');
+      api.toggleLayer(type);
+    });
+    bar.appendChild(btn);
+  }
+
+  const gridBtn = document.createElement('button');
+  gridBtn.type = 'button';
+  gridBtn.className = 'toggle';
+  gridBtn.dataset.grid = 'page';
+  gridBtn.setAttribute('aria-pressed', String(options.showGrid ?? true));
+  gridBtn.textContent = 'Page grid';
+  gridBtn.addEventListener('click', () => {
+    const on = gridBtn.getAttribute('aria-pressed') === 'true';
+    gridBtn.setAttribute('aria-pressed', on ? 'false' : 'true');
+    api.setGridVisible(!on);
+  });
+  bar.appendChild(gridBtn);
+
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'btn';
+  resetBtn.dataset.action = 'reset-view';
+  resetBtn.textContent = 'Reset view';
+  resetBtn.addEventListener('click', () => api.resetView());
+  bar.appendChild(resetBtn);
+
+  return bar;
+}
