@@ -18,5 +18,11 @@ export default defineConfig(({ command }) => ({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
+    setupFiles: ['./tests/setup-jsdom.js'],
+    environmentOptions: {
+      jsdom: {
+        url: 'http://localhost/',
+      },
+    },
   },
 }));

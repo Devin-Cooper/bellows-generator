@@ -3,10 +3,13 @@ import { buildPatternModel, buildFoldModel } from '../geometry/index.js';
 import { renderPatternSVG, renderRibLadderSVG } from '../render/svg.js';
 import { BellowsViewer } from '../render/three.js';
 import { buildControlPanel } from './controls.js';
+import { buildAppShell } from './appShell.js';
 import { mountPreview } from './preview.js';
 import { makeSVGBlob, downloadBlob, triggerDownload } from '../export/download.js';
 import { exportTiledPDF } from '../export/pdf.js';
 import { exportRibsSTL } from '../export/stl.js';
+
+const HINTS_KEY = 'bellows.hintsOn';
 
 export function debounce(fn, ms) {
   let id;
@@ -16,43 +19,61 @@ export function debounce(fn, ms) {
   };
 }
 
+function readHintsOn() {
+  try {
+    const v = localStorage.getItem(HINTS_KEY);
+    return v === null ? true : v === 'true';
+  } catch {
+    return true;
+  }
+}
+
+function writeHintsOn(on) {
+  try {
+    localStorage.setItem(HINTS_KEY, String(on));
+  } catch {
+    /* ignore storage failures (private mode / disabled) */
+  }
+}
+
 export function initApp(rootEl) {
   let params = paramsFromQuery(location.search);
   let extension = 1;
   let panel;
   let previewApi = null;
 
-  const layout = document.createElement('div');
-  layout.className = 'app';
-  const panelHost = document.createElement('div');
-  panelHost.className = 'panel';
-  const previewHost = document.createElement('div');
-  previewHost.className = 'preview';
-  const svgHost = document.createElement('div');
-  svgHost.className = 'flat-preview';
-  const canvas = document.createElement('canvas');
-  canvas.className = 'three-canvas';
-
-  // Collapse/extend slider (spec §7)
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.min = '0';
-  slider.max = '1';
-  slider.step = '0.01';
-  slider.value = '1';
-
-  previewHost.append(svgHost, canvas, slider);
-  layout.append(panelHost, previewHost);
-  rootEl.appendChild(layout);
+  // Build the responsive shell; state.js only wires callbacks to it.
+  const shell = buildAppShell({
+    initialView: 'flat',
+    onViewChange(view) {
+      // A hidden canvas has 0 size; re-size when the 3D tab becomes visible.
+      if (view === '3d') viewer.resize();
+    },
+    onToggleHints(on) {
+      writeHintsOn(on);
+      if (panel) panel.setHintsOn(on);
+    },
+    onPreset(name) {
+      // Reuse the existing control-panel preset path so params + inputs + URL
+      // all update through the one code path.
+      const btn = panel && panel.el.querySelector(`[data-preset="${name}"]`);
+      if (btn) btn.click();
+    },
+  });
+  const { panelHost, svgHost, canvas, slider } = shell;
+  rootEl.appendChild(shell.root);
 
   const viewer = new BellowsViewer(canvas);
 
-  // Wire slider after viewer is created so the closure resolves correctly
+  // Wire slider after viewer is created so the closure resolves correctly.
   slider.addEventListener('input', () => {
-    viewer.params = params; // always push the latest params before rebuilding (fix: stale-params bug)
+    viewer.params = params; // always push latest params before rebuilding (fix: stale-params bug)
     extension = Number(slider.value);
     viewer.setExtension(extension);
   });
+
+  const onWindowResize = debounce(() => viewer.resize(), 150);
+  window.addEventListener('resize', onWindowResize);
 
   const syncUrl = debounce(() => {
     history.replaceState(null, '', location.pathname + paramsToQuery(params));
@@ -61,7 +82,7 @@ export function initApp(rootEl) {
   function doRecompute() {
     const model = buildPatternModel(params);
     const patternSVG = renderPatternSVG(model, params);
-    // Destroy before re-mounting to prevent listener accumulation (Task 18 contract)
+    // Destroy before re-mounting to prevent listener accumulation.
     previewApi?.destroy();
     previewApi = mountPreview(svgHost, { patternSVG, model, params });
     if (panel) panel.setReadouts(model.metrics);
@@ -95,6 +116,11 @@ export function initApp(rootEl) {
     onExport,
   });
   panelHost.appendChild(panel.el);
+
+  // Apply persisted (default-on) hints state to both header + panel.
+  const hintsOn = readHintsOn();
+  shell.setHintsOn(hintsOn);
+  panel.setHintsOn(hintsOn);
 
   // Initial render
   const model = buildPatternModel(params);
