@@ -1,7 +1,7 @@
 // src/geometry/straight.js
 import { LAYER } from '../constants.js';
 import { computeMetrics } from './metrics.js';
-import { computeRibShapes } from './ribShapes.js';
+import { computeRibShapes, halfRibPolygon } from './ribShapes.js';
 
 /**
  * Build the flat PatternModel for a straight (parallel) bellows.
@@ -106,32 +106,25 @@ export function buildStraightPattern(params) {
     const isHalf = f === 0 || f === 4;
     for (let r = 0; r < ribCount; r++) {
       const shape = shapeFor(faceType[f], r);
-      const ribW = isHalf ? shape.width / 2 : shape.width;
-      let fx0;
-      let fx1;
-      if (f === 0) {
-        fx0 = x0; // seam flush left
-        fx1 = x0 + ribW;
-      } else if (f === 4) {
-        fx1 = x0 + w; // seam flush right
-        fx0 = fx1 - ribW;
+      const ry0 = params.endMargin + shape.yBand.y0; // fabric endMargin datum
+      // Position the CANONICAL rib polygon (computeRibShapes.points) in fabric space
+      // instead of a fresh width-rectangle. In clear mode points IS the inset rectangle,
+      // so full columns stay byte-identical; pointed/alternating carry the 45deg apex here.
+      let poly;
+      let ox;
+      if (isHalf) {
+        // Split-W half column: half-width footprint; only the OUTER (non-seam) end points.
+        poly = halfRibPolygon(shape, f === 0 ? 'right' : 'left');
+        ox = f === 0 ? x0 : x0 + w - shape.width / 2; // seam-flush origin
       } else {
-        const cxc = x0 + w / 2; // full face centred
-        fx0 = cxc - ribW / 2;
-        fx1 = cxc + ribW / 2;
+        poly = shape.points;                          // full canonical polygon
+        ox = x0 + w / 2 - shape.width / 2;            // centre the full face
       }
-      const ry0 = params.endMargin + shape.yBand.y0; // add the fabric endMargin origin
-      const ry1 = params.endMargin + shape.yBand.y1;
       segments.push({
         type: LAYER.ENGRAVE,
         layer: LAYER.ENGRAVE,
         closed: true,
-        points: [
-          { x: fx0, y: ry0 },
-          { x: fx1, y: ry0 },
-          { x: fx1, y: ry1 },
-          { x: fx0, y: ry1 },
-        ],
+        points: poly.map((pt) => ({ x: ox + pt.x, y: ry0 + pt.y })),
       });
     }
 

@@ -1,4 +1,9 @@
 // src/geometry/ribShapes.js
+// PROVISIONAL corner-point geometry (cornerMode 'pointed'/'alternating'): the exact 45deg
+// bevel reach into the cornerAllowance zone and the taper-dependent end angle (Harlin:
+// adjacent walls' end-angles sum to 90deg on a square) are paper-fold-gated, same as the
+// existing fabric miters and tapered widths. Tests here assert the CONSTRUCTION RULE only,
+// not ground-truth coordinates. See docs .../plans/2026-07-04-stiffener-overhaul.md Phase 5.
 import { computeMetrics } from './metrics.js';
 import { computeFaceFoldWidths } from './tapered.js';
 
@@ -128,5 +133,31 @@ export function ribPolygon(width, depth, ends, reach) {
   if (ends.rightPointed) pts.push({ x: width + reach, y: depth / 2 });
   pts.push({ x: width, y: depth }, { x: 0, y: depth });
   if (ends.leftPointed) pts.push({ x: -reach, y: depth / 2 });
+  return pts;
+}
+
+/**
+ * Half of a split-W rib footprint (the seam bisects the W wall, so each half runs from
+ * the seam to ONE corner). The seam edge stays flat; only the OUTER end (toward the
+ * corner) carries the canonical apex, positioned from the full rib's apex. In clear mode
+ * (no apex on shape.points) this returns a width/2 rectangle, byte-identical to Phase 2.
+ * @param {import('./types.js').RibShape} shape
+ * @param {'left'|'right'} outer  which end abuts the corner (right for col 0, left for col 4)
+ * @returns {{x:number,y:number}[]}
+ */
+export function halfRibPolygon(shape, outer) {
+  const depth = shape.yBand.y1 - shape.yBand.y0;
+  const hw = shape.width / 2;
+  const rightApex = shape.points.find((p) => p.x > shape.width);
+  const leftApex = shape.points.find((p) => p.x < 0);
+  if (outer === 'right') {
+    const pts = [{ x: 0, y: 0 }, { x: hw, y: 0 }];
+    if (rightApex) pts.push({ x: hw + (rightApex.x - shape.width), y: depth / 2 }); // outer apex
+    pts.push({ x: hw, y: depth }, { x: 0, y: depth });
+    return pts;
+  }
+  // outer === 'left': corner at x=0, seam at x=hw
+  const pts = [{ x: 0, y: 0 }, { x: hw, y: 0 }, { x: hw, y: depth }, { x: 0, y: depth }];
+  if (leftApex) pts.splice(4, 0, { x: leftApex.x, y: depth / 2 }); // outer apex (leftApex.x < 0)
   return pts;
 }

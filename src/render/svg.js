@@ -119,7 +119,7 @@ function traceColumn(ribs, colX0, datum, params) {
 
   const rows = ribs.map((s, r) => {
     const yTop = datum + r * pit;
-    return { xL: colX0, xR: colX0 + s.width, yTop, yBot: yTop + rib };
+    return { xL: colX0, xR: colX0 + s.width, yTop, yBot: yTop + rib, shape: s };
   });
 
   // Left rail straight down, then up the right side following each rib edge + tab jogs.
@@ -128,7 +128,13 @@ function traceColumn(ribs, colX0, datum, params) {
     { x: rows[N - 1].xL, y: rows[N - 1].yBot },
   ];
   for (let r = N - 1; r >= 0; r--) {
+    const s = rows[r].shape;
+    const rightApex = s.points.find((p) => p.x > s.width); // pointed/alternating outer apex
     outer.push({ x: rows[r].xR, y: rows[r].yBot });
+    if (rightApex) {
+      // right rail follows the canonical polygon out to the 45deg apex on the y-midline
+      outer.push({ x: rows[r].xR + (rightApex.x - s.width), y: rows[r].yTop + rib / 2 });
+    }
     outer.push({ x: rows[r].xR, y: rows[r].yTop });
     if (r > 0) outer.push({ x: rows[r - 1].xR, y: rows[r].yTop }); // tab jog to next rib width
   }

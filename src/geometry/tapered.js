@@ -2,7 +2,7 @@ import { normalizeParams } from '../params.js';
 import { computeRibCount } from './metrics.js';
 import { LAYER } from '../constants.js';
 import { computeMetrics } from './metrics.js';
-import { computeRibShapes } from './ribShapes.js';
+import { computeRibShapes, halfRibPolygon } from './ribShapes.js';
 
 /**
  * Per-face fold-width sequence (rear -> front) for a tapered face.
@@ -90,21 +90,16 @@ export function buildTaperedPattern(params) {
   for (let i = 0; i < n; i++) {
     for (let c = 0; c < faceKinds.length; c++) {
       const shape = shapeFor(faceKinds[c], i);
-      const ribW = c === 0 || c === 4 ? shape.width / 2 : shape.width;
-      const x0 = centers[c] - ribW / 2;
-      const x1 = centers[c] + ribW / 2;
-      const y0 = p.endMargin + shape.yBand.y0; // add the fabric endMargin origin
-      const y1 = p.endMargin + shape.yBand.y1;
+      const isHalf = c === 0 || c === 4;
+      const poly = isHalf ? halfRibPolygon(shape, c === 0 ? 'right' : 'left') : shape.points;
+      const ribW = isHalf ? shape.width / 2 : shape.width;
+      const ox = centers[c] - ribW / 2;       // left origin so the footprint is centred
+      const oy = p.endMargin + shape.yBand.y0; // fabric endMargin datum
       segments.push({
         type: LAYER.ENGRAVE,
         layer: LAYER.ENGRAVE,
         closed: true,
-        points: [
-          { x: x0, y: y0 },
-          { x: x1, y: y0 },
-          { x: x1, y: y1 },
-          { x: x0, y: y1 },
-        ],
+        points: poly.map((pt) => ({ x: ox + pt.x, y: oy + pt.y })),
       });
     }
   }
