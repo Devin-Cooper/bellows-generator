@@ -47,4 +47,15 @@
  * @property {number} extension  t in [0,1].
  */
 
+/**
+ * @typedef {Object} RibShape
+ * @property {'W'|'H'} face  Which tube face this rib stiffens.
+ * @property {number} wallIndex  0..3 around the ring (W,H,W,H).
+ * @property {number} ribIndex  0..ribCount-1 along the draw (maps to the pleat for taper).
+ * @property {{leftCorner:number,rightCorner:number}} cornerShare  Ring corners this rib abuts.
+ * @property {number} width  Inset clear width = faceWidth - 2*cornerAllowance (mm).
+ * @property {{y0:number,y1:number}} yBand  Along-draw band vs the pleated-length datum (mm).
+ * @property {{x:number,y:number}[]} points  Canonical rib-local polygon: +x across width (0..width), +y along draw (0..rib).
+ */
+
 export {};
