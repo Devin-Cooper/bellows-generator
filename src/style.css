@@ -429,3 +429,110 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ===== Responsive, touch & a11y finalization (phase 6) ===== */
+
+/* Mobile-first base (< 640px): single column; phone segmented bar visible;
+   sidebar and preview area are shown one-at-a-time via .is-active. */
+.segmented-bar {
+  display: flex;
+}
+.controls {
+  display: none;
+}
+.controls.is-active {
+  display: block;
+}
+.preview-area {
+  display: none;
+}
+.preview-area.is-active {
+  display: flex;
+}
+
+/* >= 44px touch targets on phones. */
+@media (max-width: 639.98px) {
+  .btn,
+  .toggle,
+  .tab-btn,
+  .seg-btn,
+  .controls input,
+  .controls select,
+  .export-bar .btn,
+  .presets .btn {
+    min-height: 44px;
+  }
+  .seg-btn {
+    min-width: 44px;
+  }
+}
+
+/* Tablet and up: two columns, hide the phone segmented bar, both regions visible;
+   the Flat/3D tab picks which preview panel shows. */
+@media (min-width: 640px) {
+  .app-shell {
+    grid-template-columns: 280px 1fr;
+  }
+  .segmented-bar {
+    display: none;
+  }
+  .controls {
+    display: block;
+  }
+  .preview-area {
+    display: flex;
+  }
+  .preview-panel {
+    display: none;
+  }
+  .preview-panel.is-active {
+    display: flex;
+  }
+}
+
+/* Desktop: wider sidebar. */
+@media (min-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 340px 1fr;
+  }
+}
+
+/* Visible keyboard focus rings. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.btn:focus-visible,
+.toggle:focus-visible,
+.tab-btn:focus-visible,
+.seg-btn:focus-visible,
+.controls input:focus-visible,
+.controls select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Honour reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Auto dark-mode contrast refinement (base tokens flip in the phase-1
+   prefers-color-scheme: dark block; these lift the low-contrast accents). */
+@media (prefers-color-scheme: dark) {
+  .tab-btn.is-active,
+  .seg-btn.is-active {
+    color: var(--accent-contrast);
+    background: var(--accent);
+  }
+  .readout.warn {
+    background: color-mix(in srgb, var(--warn) 24%, var(--surface));
+  }
+}
