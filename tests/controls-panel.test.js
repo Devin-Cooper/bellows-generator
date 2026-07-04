@@ -84,4 +84,60 @@ describe('buildControlPanel', () => {
     const last = onChange.mock.calls.at(-1)[0];
     expect(last.ribCount).toBeNull();
   });
+
+  it('renders each control as a .field with a human label, unit chip, and hint subtext', () => {
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    const frontW = el.querySelector('[data-key="frontW"]');
+    const field = frontW.closest('.field');
+    expect(field).not.toBeNull();
+    const label = field.querySelector('.field-label');
+    expect(label.textContent).toContain('Front width');
+    expect(field.querySelector('.field-unit').textContent).toBe('mm');
+    expect(field.querySelector('.hint').textContent).toContain('front');
+  });
+
+  it('omits the unit chip for unitless fields but keeps the hint', () => {
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    const typeField = el.querySelector('[data-key="type"]').closest('.field');
+    expect(typeField.querySelector('.field-unit')).toBeNull();
+    expect(typeField.querySelector('.field-label').textContent).toContain('Bellows type');
+    expect(typeField.querySelector('.hint')).not.toBeNull();
+  });
+
+  it('reveals hints via the .hints-on class and setHintsOn toggles it', () => {
+    const { el, setHintsOn } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    setHintsOn(false);
+    expect(el.classList.contains('hints-on')).toBe(false);
+    setHintsOn(true);
+    expect(el.classList.contains('hints-on')).toBe(true);
+  });
+
+  it('export buttons carry friendly labels while keeping data-export kinds', () => {
+    const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    const byKind = Object.fromEntries(
+      [...el.querySelectorAll('[data-export]')].map((b) => [b.dataset.export, b.textContent]),
+    );
+    expect(byKind).toEqual({
+      svg: 'Fold-pattern SVG',
+      'svg-ribs': 'Rib-ladder SVG',
+      pdf: 'Tiled PDF',
+      stl: 'Rib STL',
+    });
+  });
+
+  it('setReadouts emits .readout rows with .readout-k / .readout-v cells', () => {
+    const { el, setReadouts } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
+    setReadouts({
+      flatPleatedLength: 360,
+      usableDraw: 271,
+      collapsedThickness: 12,
+      ribCount: 25,
+      magnification: 1.07,
+      flatSheet: { w: 610, h: 430 },
+      warnings: [],
+    });
+    const first = el.querySelector('.readout');
+    expect(first.querySelector('.readout-k')).not.toBeNull();
+    expect(first.querySelector('.readout-v')).not.toBeNull();
+  });
 });

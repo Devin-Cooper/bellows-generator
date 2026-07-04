@@ -1,8 +1,16 @@
 // src/ui/controls.js
 import { DEFAULT_PARAMS, A6_PRESET, normalizeParams } from '../params.js';
+import { fieldMeta } from './fields.js';
 
 const WARNING_MESSAGES = {
   'kerf>=gap': 'kerf ≥ gap — cut will eat the inter-rib gap',
+};
+
+const EXPORT_LABELS = {
+  svg: 'Fold-pattern SVG',
+  'svg-ribs': 'Rib-ladder SVG',
+  pdf: 'Tiled PDF',
+  stl: 'Rib STL',
 };
 
 export function formatReadouts(metrics) {
@@ -29,35 +37,16 @@ export function formatReadouts(metrics) {
   return rows;
 }
 
+// Grouping + fieldset order is UI structure; per-field label/unit/hint/kind/step
+// now come from fields.js via fieldMeta().
 const GROUPS = [
-  { title: 'Type', fields: [{ key: 'type', kind: 'select', options: ['straight', 'tapered'] }] },
-  {
-    title: 'Openings',
-    fields: [
-      { key: 'frontW' }, { key: 'frontH' },
-      { key: 'rearW' }, { key: 'rearH' },
-    ],
-  },
-  {
-    title: 'Draw & pleats',
-    fields: [
-      { key: 'maxDraw' }, { key: 'drawFactor', step: 0.1 }, { key: 'rib' },
-      { key: 'gap', step: 0.1 }, { key: 'ribCount' },
-    ],
-  },
-  {
-    title: 'Corners, tabs & margins',
-    fields: [{ key: 'cornerAllowance' }, { key: 'glueTab' }, { key: 'endMargin' }],
-  },
-  {
-    title: 'Material & laser',
-    fields: [
-      { key: 'fabricThickness', step: 0.1 }, { key: 'ribThickness', step: 0.1 },
-      { key: 'kerf', step: 0.01 },
-    ],
-  },
-  { title: 'Optics', fields: [{ key: 'focalLength' }, { key: 'opticalOffset' }] },
-  { title: 'Export', fields: [{ key: 'pageSize', kind: 'select', options: ['A4', 'A3', 'Letter'] }] },
+  { title: 'Type', fields: ['type'] },
+  { title: 'Openings', fields: ['frontW', 'frontH', 'rearW', 'rearH'] },
+  { title: 'Draw & pleats', fields: ['maxDraw', 'drawFactor', 'rib', 'gap', 'ribCount'] },
+  { title: 'Corners, tabs & margins', fields: ['cornerAllowance', 'glueTab', 'endMargin'] },
+  { title: 'Material & laser', fields: ['fabricThickness', 'ribThickness', 'kerf'] },
+  { title: 'Optics', fields: ['focalLength', 'opticalOffset'] },
+  { title: 'Export', fields: ['pageSize'] },
 ];
 
 export function buildControlPanel(opts = {}) {
@@ -67,6 +56,7 @@ export function buildControlPanel(opts = {}) {
 
   const el = document.createElement('form');
   el.className = 'controls';
+  if (opts.hintsOn !== false) el.classList.add('hints-on');
   el.addEventListener('submit', (e) => e.preventDefault());
   const inputs = {};
 
@@ -75,13 +65,26 @@ export function buildControlPanel(opts = {}) {
     const legend = document.createElement('legend');
     legend.textContent = group.title;
     fs.appendChild(legend);
-    for (const field of group.fields) {
+    for (const key of group.fields) {
+      const meta = fieldMeta(key);
+      const field = document.createElement('div');
+      field.className = 'field';
+
       const label = document.createElement('label');
-      label.textContent = field.key;
+      label.className = 'field-label';
+      label.htmlFor = `ctl-${key}`;
+      label.appendChild(document.createTextNode(meta.label));
+      if (meta.unit) {
+        const unit = document.createElement('span');
+        unit.className = 'field-unit';
+        unit.textContent = meta.unit;
+        label.appendChild(unit);
+      }
+
       let input;
-      if (field.kind === 'select') {
+      if (meta.kind === 'select') {
         input = document.createElement('select');
-        for (const opt of field.options) {
+        for (const opt of meta.options) {
           const o = document.createElement('option');
           o.value = opt;
           o.textContent = opt;
@@ -90,13 +93,24 @@ export function buildControlPanel(opts = {}) {
       } else {
         input = document.createElement('input');
         input.type = 'number';
-        if (field.step) input.step = String(field.step);
+        if (meta.step) input.step = String(meta.step);
+        if (meta.min != null) input.min = String(meta.min);
+        if (meta.max != null) input.max = String(meta.max);
       }
-      input.dataset.key = field.key;
-      input.addEventListener(field.kind === 'select' ? 'change' : 'input', handleInput);
-      inputs[field.key] = input;
-      label.appendChild(input);
-      fs.appendChild(label);
+      input.id = `ctl-${key}`;
+      input.dataset.key = key;
+      input.addEventListener(meta.kind === 'select' ? 'change' : 'input', handleInput);
+      inputs[key] = input;
+
+      field.appendChild(label);
+      field.appendChild(input);
+      if (meta.hint) {
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = meta.hint;
+        field.appendChild(hint);
+      }
+      fs.appendChild(field);
     }
     el.appendChild(fs);
   }
@@ -106,8 +120,9 @@ export function buildControlPanel(opts = {}) {
   for (const kind of ['svg', 'svg-ribs', 'pdf', 'stl']) {
     const b = document.createElement('button');
     b.type = 'button';
+    b.className = 'btn';
     b.dataset.export = kind;
-    b.textContent = `Export ${kind.toUpperCase()}`;
+    b.textContent = EXPORT_LABELS[kind];
     b.addEventListener('click', () => onExport(kind));
     exportBar.appendChild(b);
   }
@@ -118,6 +133,7 @@ export function buildControlPanel(opts = {}) {
   const addPreset = (name, preset) => {
     const b = document.createElement('button');
     b.type = 'button';
+    b.className = 'btn';
     b.dataset.preset = name;
     b.textContent = name;
     b.addEventListener('click', () => apply(normalizeParams({ ...preset })));
@@ -168,16 +184,20 @@ export function buildControlPanel(opts = {}) {
       const row = document.createElement('div');
       row.className = 'readout' + (r.warn ? ' warn' : '');
       const k = document.createElement('span');
-      k.className = 'k';
+      k.className = 'readout-k';
       k.textContent = r.label;
       const val = document.createElement('span');
-      val.className = 'v';
+      val.className = 'readout-v';
       val.textContent = r.value;
       row.append(k, val);
       readouts.appendChild(row);
     }
   }
 
+  function setHintsOn(on) {
+    el.classList.toggle('hints-on', !!on);
+  }
+
   refresh();
-  return { el, setReadouts };
+  return { el, setReadouts, setHintsOn };
 }
