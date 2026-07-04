@@ -1,0 +1,52 @@
+// tests/params-query.test.js
+import { describe, it, expect } from 'vitest';
+import {
+  DEFAULT_PARAMS,
+  A6_PRESET,
+  normalizeParams,
+  paramsToQuery,
+  paramsFromQuery,
+} from '../src/params.js';
+
+describe('paramsToQuery', () => {
+  it('serializes only keys that differ from DEFAULT_PARAMS', () => {
+    expect(paramsToQuery({ ...DEFAULT_PARAMS, frontW: 160 })).toBe('?frontW=160');
+  });
+
+  it('returns an empty string when every key matches the defaults', () => {
+    expect(paramsToQuery({ ...DEFAULT_PARAMS })).toBe('');
+  });
+
+  it('omits keys whose value is null (auto ribCount)', () => {
+    const q = paramsToQuery({ ...DEFAULT_PARAMS, ribCount: null });
+    expect(q).toBe('');
+  });
+});
+
+describe('paramsFromQuery', () => {
+  it('merges over defaults and coerces numeric fields', () => {
+    const p = paramsFromQuery('?frontW=160&frontH=115');
+    expect(p.frontW).toBe(160);
+    expect(typeof p.frontW).toBe('number');
+    expect(p.pageSize).toBe('A4');
+  });
+
+  it('ignores unknown query keys', () => {
+    const p = paramsFromQuery('?bogus=1&frontW=200');
+    expect(p).not.toHaveProperty('bogus');
+    expect(p.frontW).toBe(200);
+  });
+
+  it('runs normalizeParams so straight locks rear to front', () => {
+    const p = paramsFromQuery('?type=straight&frontW=200&frontH=120');
+    expect(p.rearW).toBe(200);
+    expect(p.rearH).toBe(120);
+  });
+});
+
+describe('query round-trip', () => {
+  it('normalized params survive toQuery -> fromQuery unchanged', () => {
+    const p = normalizeParams({ ...A6_PRESET });
+    expect(paramsFromQuery(paramsToQuery(p))).toEqual(p);
+  });
+});

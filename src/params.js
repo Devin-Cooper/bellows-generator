@@ -26,3 +26,31 @@ export function normalizeParams(params) {
   p.ribCount = computeRibCount(p);
   return p;
 }
+
+export function paramsToQuery(params) {
+  const sp = new URLSearchParams();
+  for (const key of Object.keys(DEFAULT_PARAMS)) {
+    const v = params[key];
+    if (v === DEFAULT_PARAMS[key]) continue;
+    if (v === null || v === undefined) continue;
+    sp.set(key, String(v));
+  }
+  const q = sp.toString();
+  return q ? `?${q}` : '';
+}
+
+export function paramsFromQuery(search) {
+  const sp = new URLSearchParams(search);
+  const params = { ...DEFAULT_PARAMS };
+  for (const [key, raw] of sp) {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_PARAMS, key)) continue;
+    const def = DEFAULT_PARAMS[key];
+    if (typeof def === 'string') {
+      params[key] = raw;
+    } else {
+      const n = Number(raw);
+      if (Number.isFinite(n)) params[key] = n;
+    }
+  }
+  return normalizeParams(params);
+}
