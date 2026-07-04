@@ -357,6 +357,22 @@ body {
   color: var(--text);
 }
 
+/* Fix 3: preview-toolbar toggles — explicit contrast for default and active states
+   in both light and dark mode (tokens flip automatically via prefers-color-scheme). */
+.preview-toolbar .toggle {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.preview-toolbar .toggle[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
 /* ---------- Focus rings ---------- */
 :focus-visible {
   outline: 2px solid var(--focus);
@@ -464,6 +480,32 @@ body {
   }
   .seg-btn {
     min-width: 44px;
+  }
+
+  /* Fix 1: header wraps so nothing clips at ~340–390px. */
+  .app-header {
+    flex-wrap: wrap;
+    row-gap: var(--space-1);
+  }
+  .app-title {
+    font-size: 1rem;
+  }
+  .header-actions .btn,
+  .header-actions .toggle {
+    padding: var(--space-1) var(--space-2);
+    font-size: 0.85rem;
+  }
+
+  /* Fix 2: collapse-row label never clipped. */
+  .collapse-row {
+    flex-wrap: wrap;
+  }
+  .collapse-row input[type="range"] {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .extension-label {
+    flex-shrink: 0;
   }
 }
 
