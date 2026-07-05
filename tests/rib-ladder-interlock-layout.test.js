@@ -56,7 +56,7 @@ describe('renderRibLadderSVG — interlock layout is on-sheet & un-garbled', () 
     const { svg } = ladder({ frontW: 160, frontH: 115, cornerMode: 'interlock' });
     const W = sheetWidth(svg);
     const paths = ladderPaths(svg);
-    expect(paths.length).toBe(2); // rectangular => W + H, independent of the square dedupe fix
+    expect(paths.length).toBe(4); // rectangular => 4 uncombined walls (W0, H1, W2, H3)
     for (const a of paths) {
       const b = bbox(outerVerts(a.d));
       expect(b.minX).toBeGreaterThanOrEqual(-1e-6);   // left points not clipped off the left edge

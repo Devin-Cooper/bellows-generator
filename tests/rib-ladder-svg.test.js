@@ -40,8 +40,8 @@ describe('renderRibLadderSVG — connected outline (P0)', () => {
     const { svg, metrics, params } = ladder({ frontW: 160, frontH: 115 });
     expect(svg.includes('data-role="rib"')).toBe(false); // no confetti rib rects
     expect(svg.includes('data-role="tab"')).toBe(false);  // no confetti tab rects
-    expect(ladderPaths(svg, 'W').length).toBe(1);
-    expect(ladderPaths(svg, 'H').length).toBe(1);
+    expect(ladderPaths(svg, 'W').length).toBe(2);
+    expect(ladderPaths(svg, 'H').length).toBe(2);
     // outer boundary + (ribCount-1) middle notches = ribCount subpaths in the single path
     const dW = ladderPaths(svg, 'W')[0].d;
     expect((dW.match(/M /g) || []).length).toBe(metrics.ribCount);
@@ -61,8 +61,8 @@ describe('renderRibLadderSVG — connected outline (P0)', () => {
 
   it('emits BOTH W and H rib families (P5)', () => {
     const { svg } = ladder({ frontW: 160, frontH: 115 });
-    expect(ladderPaths(svg, 'W').length).toBe(1);
-    expect(ladderPaths(svg, 'H').length).toBe(1);
+    expect(ladderPaths(svg, 'W').length).toBe(2);
+    expect(ladderPaths(svg, 'H').length).toBe(2);
   });
 
   it('grows the outline OUTWARD by kerf so parts cut to nominal width', () => {

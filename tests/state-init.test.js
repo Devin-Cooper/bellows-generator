@@ -20,6 +20,7 @@ vi.mock('../src/geometry/index.js', () => ({
 vi.mock('../src/render/svg.js', () => ({
   renderPatternSVG: vi.fn(() => '<svg data-mock="1"></svg>'),
   renderRibLadderSVG: vi.fn(() => '<svg data-rib="1"></svg>'),
+  renderRibMasterSheets: vi.fn(() => ['<svg data-rib="1"></svg>']),
 }));
 vi.mock('../src/render/three.js', () => ({
   BellowsViewer: vi.fn(function BellowsViewer() {
@@ -120,13 +121,13 @@ describe('initApp', () => {
     expect(downloadBlob.mock.calls[0][1]).toBe('bellows-fold-pattern.svg');
   });
 
-  it('onExport svg-ribs triggers downloadBlob with the rib-ladder filename', () => {
+  it('onExport svg-ribs downloads per-bed-sheet rib SVGs', () => {
     const root = document.createElement('div');
     document.body.appendChild(root);
     initApp(root);
     root.querySelector('[data-export="svg-ribs"]').click();
     expect(downloadBlob).toHaveBeenCalled();
-    expect(downloadBlob.mock.calls[0][1]).toBe('bellows-rib-ladder.svg');
+    expect(downloadBlob.mock.calls[0][1]).toBe('bellows-ribs-sheet-1.svg');
   });
 
   it('onExport stl triggers triggerDownload with the stl filename', () => {

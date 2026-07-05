@@ -24,17 +24,17 @@ function parse(svg, tag) {
 }
 
 describe('rib-ladder spine score', () => {
-  it('emits one centre/spine score line per column (W + H)', () => {
+  it('emits one spine per wall (4 total, W + H faces both present)', () => {
     const { svg } = ladder({ frontW: 160, frontH: 115 });
     const spines = parse(svg, 'line').filter((l) => l['data-role'] === 'spine');
-    expect(spines.length).toBe(2);
+    expect(spines.length).toBe(4);
     expect(new Set(spines.map((s) => s['data-face']))).toEqual(new Set(['W', 'H']));
   });
 
-  it('collapses to one spine for a square cross-section', () => {
+  it('emits a spine per wall for a square cross-section', () => {
     const { svg } = ladder({ frontW: 150, frontH: 150 });
     const spines = parse(svg, 'line').filter((l) => l['data-role'] === 'spine');
-    expect(spines.length).toBe(1);
+    expect(spines.length).toBe(4);
   });
 
   it('runs the spine from the datum down the full rib stack', () => {

@@ -1,6 +1,6 @@
 import { paramsFromQuery, paramsToQuery } from '../params.js';
 import { buildPatternModel, buildFoldModel } from '../geometry/index.js';
-import { renderPatternSVG, renderRibLadderSVG } from '../render/svg.js';
+import { renderPatternSVG, renderRibMasterSheets } from '../render/svg.js';
 import { BellowsViewer } from '../render/three.js';
 import { buildControlPanel } from './controls.js';
 import { buildAppShell } from './appShell.js';
@@ -144,7 +144,10 @@ export function initApp(rootEl) {
     if (kind === 'svg') {
       downloadBlob(makeSVGBlob(renderPatternSVG(model, params)), 'bellows-fold-pattern.svg');
     } else if (kind === 'svg-ribs') {
-      downloadBlob(makeSVGBlob(renderRibLadderSVG(model, params)), 'bellows-rib-ladder.svg');
+      const sheets = renderRibMasterSheets(model, params);
+      sheets.forEach((svg, i) =>
+        downloadBlob(makeSVGBlob(svg), `bellows-ribs-sheet-${i + 1}.svg`)
+      );
     } else if (kind === 'stl') {
       triggerDownload(exportRibsSTL(model, params), 'bellows-ribs.stl', 'model/stl');
     } else if (kind === 'stl-full') {

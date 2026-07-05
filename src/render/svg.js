@@ -1,5 +1,5 @@
 import { LAYER, LAYER_COLORS } from '../constants.js';
-import { computeRibShapes } from '../geometry/ribShapes.js';
+import { computeWallRibLayout } from '../geometry/wallRibLayout.js';
 
 const LAYER_ORDER = [
   LAYER.CUT,
@@ -13,6 +13,12 @@ const LAYER_ORDER = [
 // GLUE_TAB is a scored fold line, not a kerf-grown cut edge — the outer CUT rectangle
 // already encloses the tab region, so GLUE_TAB must NOT pass through growRect.
 const KERF_LAYERS = new Set([LAYER.CUT]);
+
+// Master-sheet layout constants (mm). SHEET_MARGIN mirrors the old lateral padding; BLOCK_GUTTER
+// mirrors the ladder gutter; CALIBRATION_MM mirrors export/pdf.js' 50mm 1:1 check.
+const SHEET_MARGIN = 5;
+const BLOCK_GUTTER = 10;
+const CALIBRATION_MM = 50;
 
 const fmt = (n) => String(Math.round(n * 1e4) / 1e4);
 
@@ -127,16 +133,6 @@ export function offsetEdges(points, delta) {
   return out;
 }
 
-/** Ribs of one representative wall of a face, sorted rear->front by ribIndex. */
-function faceColumnRibs(shapes, face) {
-  const walls = [...new Set(shapes.filter((s) => s.face === face).map((s) => s.wallIndex))].sort(
-    (a, b) => a - b
-  );
-  return shapes
-    .filter((s) => s.face === face && s.wallIndex === walls[0])
-    .sort((a, b) => a.ribIndex - b.ribIndex);
-}
-
 /**
  * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
  * Ribs are left-aligned; the outer boundary follows each rib's own edges. Each rib polygon is
@@ -213,133 +209,244 @@ function traceColumn(ribs, colX0, datum, params) {
   return subs.join(' ');
 }
 
+/** The 4 whole walls (W,H,W,H) from the shared fabric-placement foundation, ribs sorted rear->front.
+ *  Ignores computeWallRibLayout's unrolled x; the master sheet overrides x with its own packer. */
+export function collectWalls(params) {
+  const layout = computeWallRibLayout(params);
+  const byWall = new Map();
+  for (const r of layout) {
+    if (!byWall.has(r.wallIndex)) byWall.set(r.wallIndex, { face: r.face, wallIndex: r.wallIndex, ribs: [] });
+    byWall.get(r.wallIndex).ribs.push(r);
+  }
+  const walls = [...byWall.values()].sort((a, b) => a.wallIndex - b.wallIndex);
+  for (const w of walls) w.ribs.sort((a, b) => a.ribIndex - b.ribIndex);
+  return walls;
+}
+
 /**
- * Stiffener rib-ladder SVG. Consumes the canonical rib shapes and emits ONE connected
- * CUT outline per column (outer boundary + per-gap middle notches) so the ribs stay
- * joined by ≤2 mm connector tabs and cut as a single snap-apart piece — no polygon-union
- * library. Kerf grows the outer boundary OUTWARD (parts come out at nominal width). Both
- * W and H families are emitted. cornerMode shapes the rib ends via computeRibShapes (clear
- * = plain inset rectangles; interlock = a wide rib POINTS out / a narrow rib is NOTCHED in).
- * @param {import('../geometry/types.js').PatternModel} model
- * @param {object} params
+ * 2D bed packer. (1) Splits every wall lattice taller than the usable bed height into
+ * bed-fitting segments — the SAME greedy grow-until-overrun loop the STL bed-wrap uses, each
+ * segment its own snap-apart lattice. (2) Shelf-packs the segment blocks left->right across the
+ * usable bed width, wrapping to a new shelf and then to a new bed sheet on overflow. A bottom
+ * band (CALIBRATION_MM + SHEET_MARGIN) is reserved on every sheet for the calibration square, so
+ * blocks never collide with it.
+ * @returns {{blocks:Object[]}[]} one entry per bed sheet.
+ */
+export function packRibSheets(walls, params) {
+  const { rib, gap, kerf, bedW, bedH } = params;
+  const pitch = rib + gap;
+  const usableW = bedW - 2 * SHEET_MARGIN;
+  const usableH = bedH - 3 * SHEET_MARGIN - CALIBRATION_MM; // reserve the bottom calibration band
+  const budget = Math.max(rib, usableH - kerf);             // vertical rib-stack budget per segment
+
+  // (1) Y-split walls into segment blocks (mirrors stl.js computeRibOutlines bed-wrap).
+  const blocks = [];
+  for (const wall of walls) {
+    const ribs = wall.ribs;
+    if (!ribs.length) continue;
+    const widthMax = Math.max(...ribs.map((r) => r.width));
+    const leftPad = Math.max(0, ...ribs.map((r) => -Math.min(...r.points.map((p) => p.x))));
+    const rightPad = Math.max(0, ...ribs.map((r) => Math.max(...r.points.map((p) => p.x)) - r.width));
+    const contentW = kerf + leftPad + widthMax + rightPad;
+
+    let segStart = 0;
+    let segIndex = 0;
+    while (segStart < ribs.length) {
+      let segLen = 0;
+      let segEnd = segStart;
+      while (segEnd < ribs.length) {
+        const add = segEnd === segStart ? rib : gap + rib;
+        if (segEnd > segStart && segLen + add > budget) break;
+        segLen += add;
+        segEnd++;
+      }
+      const segRibs = ribs.slice(segStart, segEnd);
+      const contentH = kerf + (segRibs.length - 1) * pitch + rib;
+      blocks.push({
+        face: wall.face, wallIndex: wall.wallIndex, segIndex,
+        ribs: segRibs, widthMax, leftPad, rightPad, contentW, contentH,
+      });
+      segStart = segEnd;
+      segIndex++;
+    }
+  }
+
+  // (2) Shelf-pack blocks onto bed sheets.
+  const sheets = [];
+  let sheet = null;
+  let shelfX = 0;
+  let shelfY = 0;
+  let shelfH = 0;
+  const startSheet = () => {
+    sheet = { blocks: [] };
+    sheets.push(sheet);
+    shelfX = SHEET_MARGIN;
+    shelfY = SHEET_MARGIN;
+    shelfH = 0;
+  };
+  startSheet();
+  for (const block of blocks) {
+    if (sheet.blocks.length && shelfX + block.contentW > SHEET_MARGIN + usableW) {
+      shelfX = SHEET_MARGIN;         // wrap to the next shelf
+      shelfY += shelfH + BLOCK_GUTTER;
+      shelfH = 0;
+    }
+    if (sheet.blocks.length && shelfY + block.contentH > SHEET_MARGIN + usableH) {
+      startSheet();                  // shelf overflows the bed -> new sheet
+    }
+    block.x = shelfX;
+    block.y = shelfY;
+    sheet.blocks.push(block);
+    shelfX += block.contentW + BLOCK_GUTTER;
+    shelfH = Math.max(shelfH, block.contentH);
+  }
+  return sheets;
+}
+
+/** One bed sheet: packed lattices (CUT) + spine scores (FOLD_VALLEY) + rib labels & calibration (ENGRAVE). */
+export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
+  const { rib, gap, kerf, bedW, bedH } = params;
+  const pitch = rib + gap;
+  const f = fmt;
+  const cut = LAYER.CUT;
+  const cutPaths = [];
+  const spines = [];
+  const labels = [];
+  for (const block of blocks) {
+    const colX0 = block.x + kerf / 2 + block.leftPad;
+    const datumY = block.y + kerf / 2;
+    const d = traceColumn(block.ribs, colX0, datumY, params);
+    cutPaths.push(
+      `<path data-role="ladder" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
+        `data-seg="${block.segIndex}" fill-rule="evenodd" d="${d}"/>`
+    );
+    const cx = colX0 + block.widthMax / 2;
+    const stackH = (block.ribs.length - 1) * pitch + rib;
+    spines.push(
+      `<line data-role="spine" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
+        `x1="${f(cx)}" y1="${f(datumY)}" x2="${f(cx)}" y2="${f(datumY + stackH)}"/>`
+    );
+    const lc = (block.wallIndex + 3) % 4;
+    const rc = block.wallIndex;
+    block.ribs.forEach((s, j) => {
+      const ty = datumY + j * pitch + rib / 2;
+      const corner = `L${lc}/R${rc}`;
+      labels.push(
+        `<text data-role="rib-label" data-index="${s.ribIndex}" data-face="${block.face}" ` +
+          `data-wall="${block.wallIndex}" data-corner="${corner}" ` +
+          `x="${f(cx)}" y="${f(ty)}" font-size="2.5" text-anchor="middle">` +
+          `${s.ribIndex}${block.face} ${corner}</text>`
+      );
+    });
+  }
+  const calX = SHEET_MARGIN;
+  const calY = bedH - SHEET_MARGIN - CALIBRATION_MM;
+  const calSquare =
+    `<rect data-role="calibration" x="${f(calX)}" y="${f(calY)}" ` +
+    `width="${f(CALIBRATION_MM)}" height="${f(CALIBRATION_MM)}"/>` +
+    `<text data-role="calibration-label" x="${f(calX)}" y="${f(calY - 1)}" ` +
+    `font-size="3">${CALIBRATION_MM} mm</text>`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" ` +
+    `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
+    `data-sheet="${sheetIndex + 1}" data-sheet-count="${sheetCount}" ` +
+    `width="${f(bedW)}mm" height="${f(bedH)}mm" viewBox="0 0 ${f(bedW)} ${f(bedH)}">` +
+    `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
+    `stroke="${LAYER_COLORS[cut]}" fill="none">${cutPaths.join('')}</g>` +
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_VALLEY}" ` +
+    `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spines.join('')}</g>` +
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${labels.join('')}${calSquare}</g>` +
+    `</svg>`
+  );
+}
+
+/**
+ * Bed-sized rib master sheets: the 4 whole walls (uncombined) packed onto 1:1mm bedW x bedH SVGs,
+ * tall walls split into bed-height segments, overflow spilling to extra sheets. Each sheet carries
+ * a 50mm calibration square. `model` is unused (geometry comes from params).
+ * @returns {string[]} one SVG per bed sheet.
+ */
+export function renderRibMasterSheets(model, params) {
+  const sheets = packRibSheets(collectWalls(params), params);
+  return sheets.map((s, i) => renderRibSheetSVG(s.blocks, params, i, sheets.length));
+}
+
+/**
+ * Combined rib-ladder reference drawing (single SVG). Lays the 4 WHOLE walls (W,H,W,H) from the
+ * shared fabric-placement foundation as separate, UNCOMBINED columns — no W/H dedupe, no "cut xN"
+ * multiplier (that model is retired; the bed-tiled multi-file export is renderRibMasterSheets).
+ * Each column is one connected snap-apart lattice (traceColumn) at the shared endMargin datum.
  * @returns {string}
  */
 export function renderRibLadderSVG(model, params) {
-  const shapes = computeRibShapes(params);
-  const { rib, gap, kerf, cornerAllowance: ca, endMargin } = params;
-  const f = fmt;                    // Phase-6 snippets use f(); fmt is the module formatter
-  const pit = rib + gap;
-  const pitch = pit;                // Phase-6 snippets use pitch; pit = rib + gap
-  const margin = 5;                 // lateral sheet padding (x/side only)
-  const datum = endMargin;          // shared y-origin with the fabric ENGRAVE footprints (registration)
+  const walls = collectWalls(params);
+  const { rib, gap, kerf, endMargin } = params;
+  const f = fmt;
+  const pitch = rib + gap;
+  const margin = 5;
+  const datum = endMargin;
   const gutter = 10;
 
-  const wRibs = faceColumnRibs(shapes, 'W');
-  const hRibs = faceColumnRibs(shapes, 'H');
-  const ribCount = wRibs.length;
-
-  // Interlock makes a square's W and H columns EQUAL width but COMPLEMENTARY shape (W wide at
-  // even ribIndex, H wide at odd), so a width-only dedupe would merge them into 4 identical WIDE
-  // strips — the ring could never interlock, and it would disagree with the STL, which keeps the
-  // families separate. Dedupe on SHAPE instead: compare the full rib-local polygons. Clear-mode
-  // squares still merge (identical rectangles); interlock squares keep two complementary columns;
-  // rectangular never merges (widths, hence points, differ).
-  const samePoints = (a, b) =>
-    a.length === b.length &&
-    a.every((p, i) => Math.abs(p.x - b[i].x) < 1e-9 && Math.abs(p.y - b[i].y) < 1e-9);
-  const sameShape =
-    wRibs.length === hRibs.length &&
-    wRibs.every((r, i) => samePoints(r.points, hRibs[i].points));
-  // Quantity = number of WALLS a ladder column represents. A normal (un-merged) W or H
-  // column is 2 identical walls (x2). When W and H dedupe into one merged square column
-  // it stands in for all 4 walls of the ring (x4) — else the sheet would specify only 2
-  // strips for a 4-wall square tube.
-  const columns = sameShape
-    ? [{ face: 'W', label: 'W/H', ribs: wRibs, qty: 4 }]
-    : [
-        { face: 'W', label: 'W', ribs: wRibs, qty: 2 },
-        { face: 'H', label: 'H', ribs: hRibs, qty: 2 },
-      ];
-
-  // Reserve room for the left apex protrusion so it stays on-sheet.
-  // In interlock mode traceColumn places a WIDE rib's left apex at colX0 + leftApex.x
-  // (leftApex.x = -reach < 0). After kerf grow the rendered minX = colX0 - reach - kerf/2.
-  // With reach=6 and margin=5 this lands at -1 (off-sheet). Shift colX0 right by leftPad
-  // (= reach for uniform ribs) so the rendered left apex lands exactly at margin.
-  // Clear mode: no left apex → leftPad=0 → byte-identical layout.
-  const allRibs = [...wRibs, ...hRibs];
+  const ribCount = walls.length ? walls[0].ribs.length : 0;
+  const allRibs = walls.flatMap((w) => w.ribs);
   const anyLeftApex = allRibs.some((s) => s.points.some((p) => p.x < 0));
   const leftPad = anyLeftApex
     ? Math.max(...allRibs.map((s) => { const la = s.points.find((p) => p.x < 0); return la ? -la.x : 0; }))
     : 0;
-
-  // Symmetric to leftPad: reserve the widest RIGHT-apex overhang (= reach) so the rightmost
-  // column's right points stay on-sheet. NOTE: with interlock, a column and its neighbour never
-  // both point at the same band (complementary parity), so same-band point/point collisions no
-  // longer occur — rightPad's only remaining job is the off-sheet clip of the rightmost column.
-  // Clear mode has no right apex => rightPad = 0 => byte-identical layout to before.
   const anyRightApex = allRibs.some((s) => s.points.some((p) => p.x > s.width));
   const rightPad = anyRightApex
     ? Math.max(...allRibs.map((s) => { const ra = s.points.find((p) => p.x > s.width); return ra ? ra.x - s.width : 0; }))
     : 0;
 
   const cutPaths = [];
-  const notes = [];
+  const placed = [];
   let colX0 = margin + kerf / 2 + leftPad;
   let maxRight = 0;
-
-  for (const col of columns) {
-    const width = Math.max(...col.ribs.map((r) => r.width)); // widest pleat for layout
-    col.x0 = colX0;   // expose the column left edge to Phase 6 (spine/labels/calibration)
-    col.width = width;
-    const d = traceColumn(col.ribs, colX0, datum, params);
+  for (const wall of walls) {
+    const width = Math.max(...wall.ribs.map((r) => r.width));
+    const d = traceColumn(wall.ribs, colX0, datum, params);
     cutPaths.push(
-      `<path data-role="ladder" data-face="${col.face}" data-qty="${col.qty}" fill-rule="evenodd" d="${d}"/>`
+      `<path data-role="ladder" data-face="${wall.face}" data-wall="${wall.wallIndex}" ` +
+        `fill-rule="evenodd" d="${d}"/>`
     );
-    notes.push(
-      `<text data-role="qty" data-face="${col.face}" ` +
-        `x="${fmt(colX0)}" y="${fmt(datum - 1.5)}">${col.label} cut x${col.qty}</text>`
-    );
+    placed.push({ face: wall.face, wallIndex: wall.wallIndex, ribs: wall.ribs, x0: colX0, width });
     maxRight = colX0 + width + kerf / 2 + rightPad;
     colX0 = colX0 + width + kerf + gutter + rightPad;
   }
 
   const w = maxRight + margin;
-  const CALIBRATION_MM = 50; // 1:1 scale check — mirrors CALIBRATION_MM in export/pdf.js
   const stackH = (ribCount - 1) * pitch + rib;
   const h = datum + stackH + margin + CALIBRATION_MM + margin;
   const cut = LAYER.CUT;
 
-  const spineMarks = columns
+  const spineMarks = placed
     .map((col) => {
       const cx = col.x0 + col.width / 2;
       return (
-        `<line data-role="spine" data-face="${col.face}" ` +
+        `<line data-role="spine" data-face="${col.face}" data-wall="${col.wallIndex}" ` +
         `x1="${f(cx)}" y1="${f(datum)}" x2="${f(cx)}" y2="${f(datum + stackH)}"/>`
       );
     })
     .join('');
-
   const spineGroup =
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_VALLEY}" ` +
     `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spineMarks}</g>`;
 
-  const labelMarks = columns
+  const labelMarks = placed
     .map((col) => {
-      const wall = shapes.find((s) => s.face === col.face);
-      const colShapes = shapes
-        .filter((s) => s.face === col.face && s.wallIndex === wall.wallIndex)
-        .sort((a, b) => a.ribIndex - b.ribIndex);
       const cx = col.x0 + col.width / 2;
-      return colShapes
+      const lc = (col.wallIndex + 3) % 4;
+      const rc = col.wallIndex;
+      return col.ribs
         .map((s) => {
           const ty = datum + s.ribIndex * pitch + rib / 2;
-          const corner = `L${f(s.cornerShare.leftCorner)}/R${f(s.cornerShare.rightCorner)}`;
+          const corner = `L${lc}/R${rc}`;
           return (
-            `<text data-role="rib-label" data-index="${s.ribIndex}" ` +
-            `data-face="${s.face}" data-corner="${corner}" ` +
+            `<text data-role="rib-label" data-index="${s.ribIndex}" data-face="${col.face}" ` +
+            `data-wall="${col.wallIndex}" data-corner="${corner}" ` +
             `x="${f(cx)}" y="${f(ty)}" font-size="2.5" text-anchor="middle">` +
-            `${s.ribIndex}${s.face} ${corner}</text>`
+            `${s.ribIndex}${col.face} ${corner}</text>`
           );
         })
         .join('');
@@ -353,7 +460,6 @@ export function renderRibLadderSVG(model, params) {
     `width="${f(CALIBRATION_MM)}" height="${f(CALIBRATION_MM)}"/>` +
     `<text data-role="calibration-label" x="${f(calX)}" y="${f(calY - 1)}" ` +
     `font-size="3">${CALIBRATION_MM} mm</text>`;
-
   const engraveGroup =
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
     `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${labelMarks}${calSquare}</g>`;
@@ -364,13 +470,7 @@ export function renderRibLadderSVG(model, params) {
     `data-datum="${f(datum)}" ` +
     `width="${f(w)}mm" height="${f(h)}mm" viewBox="0 0 ${f(w)} ${f(h)}">` +
     `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
-    `stroke="${LAYER_COLORS[cut]}" fill="none">` +
-    cutPaths.join('') +
-    `</g>` +
-    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
-    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">` +
-    notes.join('') +
-    `</g>` +
+    `stroke="${LAYER_COLORS[cut]}" fill="none">${cutPaths.join('')}</g>` +
     spineGroup +
     engraveGroup +
     `</svg>`

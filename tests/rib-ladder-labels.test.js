@@ -29,7 +29,7 @@ describe('rib-ladder per-rib labels', () => {
   it('emits one ENGRAVE label per rib per column with index + face + corner-share', () => {
     const { svg, metrics } = ladder({ frontW: 160, frontH: 115 });
     const labels = parseText(svg).filter((t) => t['data-role'] === 'rib-label');
-    expect(labels.length).toBe(2 * metrics.ribCount); // W + H columns
+    expect(labels.length).toBe(4 * metrics.ribCount); // 4 uncombined wall columns
     expect(new Set(labels.map((l) => l['data-face']))).toEqual(new Set(['W', 'H']));
     for (const l of labels) {
       expect(l['data-index']).toBeDefined();

@@ -73,9 +73,10 @@ describe('cornerMode=interlock propagates from computeRibShapes to every consume
     // fold-line band edge — not a mid-depth notch (the deleted hexagon, which the ladder would trace
     // as a plain rectangle with NO outward jut). Pin the interlock W-column outward juts.
     const num = (re, s) => Number(re.exec(s)[1]);
-    const colX0 = num(/<text data-role="qty" data-face="W"[^>]*\bx="([-\d.]+)"/, interSvg);
+    // colX0 derived from the spine center and the clear width from params (qty notes are retired).
     const spineCx = num(/<line data-role="spine" data-face="W"[^>]*\bx1="([-\d.]+)"/, interSvg);
-    const clearW = 2 * (spineCx - colX0);
+    const clearW = interP.frontW - 2 * interP.cornerAllowance;
+    const colX0 = spineCx - clearW / 2;
     const wD = /<path data-role="ladder" data-face="W"[^>]*\bd="([^"]*)"/.exec(interSvg)[1];
     const outerNums = wD.split('Z')[0].match(/-?[\d.]+/g).map(Number);
     const verts = [];
