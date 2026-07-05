@@ -210,7 +210,7 @@ function traceColumn(ribs, colX0, datum, params) {
  * joined by ≤2 mm connector tabs and cut as a single snap-apart piece — no polygon-union
  * library. Kerf grows the outer boundary OUTWARD (parts come out at nominal width). Both
  * W and H families are emitted. cornerMode shapes the rib ends via computeRibShapes (clear
- * = rectangles here; pointed/alternating land in the corner-modes phase).
+ * = plain inset rectangles; interlock = a wide rib POINTS out / a narrow rib is NOTCHED in).
  * @param {import('../geometry/types.js').PatternModel} model
  * @param {object} params
  * @returns {string}
@@ -253,7 +253,7 @@ export function renderRibLadderSVG(model, params) {
       ];
 
   // Reserve room for the left apex protrusion so it stays on-sheet.
-  // In pointed/alternating mode traceColumn places the left apex at colX0 + leftApex.x
+  // In interlock mode traceColumn places a WIDE rib's left apex at colX0 + leftApex.x
   // (leftApex.x = -reach < 0). After kerf grow the rendered minX = colX0 - reach - kerf/2.
   // With reach=6 and margin=5 this lands at -1 (off-sheet). Shift colX0 right by leftPad
   // (= reach for uniform ribs) so the rendered left apex lands exactly at margin.

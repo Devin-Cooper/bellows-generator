@@ -127,6 +127,16 @@ describe('renderRibLadderSVG — interlock layout is on-sheet & un-garbled', () 
     // the exact sign the bbox-radial offset got WRONG at a reflex vertex.
     expect(gn[1].x).toBeLessThan(notchDepth);             // left notch tip toward x=0 rail
     expect(gn[4].x).toBeGreaterThan(width - notchDepth);  // right notch tip toward x=width rail
+    // PIN the reflex offset RESULT to the true per-edge outward-normal miter. The reflex tip lies
+    // on the y-midline where the two notch edges meet at a symmetric reflex angle, so the miter
+    // pushes it purely along -x (left) / +x (right) by delta/cos(half-angle) — here ~0.1106mm, so
+    // the tip lands at 6.389426 / 13.610574, NOT the ±half=±0.075 a bbox-centre radial offset
+    // applies (which would land 6.425 / 13.575). This magnitude is what pins the fix: a radial
+    // offset classifies the tip only by x</>cx and shifts by a flat ±half, missing the reflex angle.
+    expect(gn[1].x).toBeCloseTo(6.389426, 5);
+    expect(gn[1].y).toBeCloseTo(depth / 2, 6);            // pure normal: stays on the midline
+    expect(gn[4].x).toBeCloseTo(13.610574, 5);
+    expect(gn[4].y).toBeCloseTo(depth / 2, 6);
     // a plain axis-aligned corner still moves by (±half, ±half): matches the old offsetFromCentre,
     // so clear-mode columns are geometrically unchanged.
     const rect = [ { x: 0, y: 0 }, { x: 0, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 0 } ];

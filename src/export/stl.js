@@ -22,7 +22,7 @@ const xCenter = (pts) => (Math.min(...xs(pts)) + Math.max(...xs(pts))) / 2;
  * INWARD print offset (elephant-foot / over-extrusion compensation): shrink the polygon
  * toward its bounding-box centre by `d` on each axis (OPPOSITE sign to the laser kerf,
  * which grows outward). Axis-aligned inset is exact for the clear rectangles emitted now;
- * PROVISIONAL for pointed/alternating bevels (paper-fold + test-print gated, spec §7/§12).
+ * PROVISIONAL for interlock point/notch ends (paper-fold + test-print gated, spec §7/§12).
  * @param {{x:number,y:number}[]} pts @param {number} d
  * @returns {{x:number,y:number}[]}
  */
@@ -197,8 +197,8 @@ export function earClip(points) {
 /**
  * Binary STL of the rib solids. Each solid is a prism: its base polygon (V vertices)
  * extruded z0..z1 -> (V-2) top + (V-2) bottom + 2V side triangles = 4V-4. The header
- * count is therefore SHAPE-AWARE (clear rectangles -> 12; pointed bevels add triangles),
- * replacing the old fixed 12*ribCount.
+ * count is therefore SHAPE-AWARE (clear rectangles -> 12; interlock point/notch ends add
+ * triangles), replacing the old fixed 12*ribCount.
  * @param {import('../geometry/types.js').PatternModel} model
  * @param {Object} params
  * @returns {ArrayBuffer}

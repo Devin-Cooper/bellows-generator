@@ -66,7 +66,10 @@ describe('earClip — concavity-safe cap triangulation', () => {
       expect(ar).toBeGreaterThan(1e-9); // consistent CCW orientation, no sliver/flip
       sum += ar;
     }
-    expect(sum).toBeCloseTo(poly, 6); // covers the polygon EXACTLY (void not filled)
+    expect(sum).toBeCloseTo(poly, 6); // AREA CONSERVATION: signed tri-areas sum to the ring
+    // area. NOTE this alone is VACUOUS for concavity — a vertex-0 fan that SPANS the notch void
+    // sums to the very same signed area (the void's over/under contributions cancel). The
+    // per-triangle positivity above + the void-empty checks below are what actually pin the notch.
 
     const m = midOf(s);
     const left = P.find((p) => Math.abs(p.y - m) < 1e-6 && p.x < s.width / 2);
@@ -95,7 +98,7 @@ describe('earClip — concavity-safe cap triangulation', () => {
     expect(aw).toBeCloseTo(Math.abs(signedArea(wide.points)), 6);
   });
 
-  it('(c) exportRibsSTL top-cap area === total polygon area (real mesh void empty); bridges intact', () => {
+  it('(c) exportRibsSTL caps are OUTWARD (top +z / bottom -z), top-cap area === polygon area, void empty; bridges intact', () => {
     const params = normalizeParams({ ...base, cornerMode: 'interlock' });
     const solids = computeRibOutlines(model, params);
 
@@ -120,7 +123,16 @@ describe('earClip — concavity-safe cap triangulation', () => {
     expect(buf.byteLength).toBe(84 + triCount * 50);
 
     const z1 = params.ribThickness;
+    const z0 = 0; // computeRibOutlines extrudes z0=0 .. z1=ribThickness
+    // GEOMETRIC normal z-component from a triangle's own vertex winding: the z of (v1-v0)x(v2-v0).
+    // The STL stores a ZEROED normal, so this is derived purely from winding. A manifold solid
+    // needs OUTWARD caps: the TOP cap (the +z face) must wind so this is > 0, the BOTTOM cap (the
+    // -z face) must wind so this is < 0. A flipped/inside-out cap (e.g. bottom emitted with the
+    // top's winding) would ship green without this — the void/area checks don't see the sign.
+    const normalZ = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     let capArea = 0;
+    let topCaps = 0;
+    let botCaps = 0;
     let o = 84;
     for (let t = 0; t < triCount; t++) {
       o += 12; // normal (zeroed)
@@ -132,8 +144,19 @@ describe('earClip — concavity-safe cap triangulation', () => {
         v.push({ x, y, z });
       }
       o += 2; // attribute byte count
-      if (v.every((p) => Math.abs(p.z - z1) < 1e-4)) capArea += Math.abs(triArea(v[0], v[1], v[2]));
+      const isTop = v.every((p) => Math.abs(p.z - z1) < 1e-4);
+      const isBot = v.every((p) => Math.abs(p.z - z0) < 1e-4);
+      if (isTop) {
+        capArea += Math.abs(triArea(v[0], v[1], v[2]));
+        expect(normalZ(v[0], v[1], v[2])).toBeGreaterThan(0); // TOP cap outward normal points +z
+        topCaps++;
+      } else if (isBot) {
+        expect(normalZ(v[0], v[1], v[2])).toBeLessThan(0);    // BOTTOM cap outward normal points -z
+        botCaps++;
+      }
     }
+    expect(topCaps).toBeGreaterThan(0); // caps really parsed, so the normal-sign asserts ran
+    expect(botCaps).toBeGreaterThan(0);
     const polyArea = solids.reduce((sum, s) => sum + Math.abs(signedArea(s.points)), 0);
     // A vertex-0 fan OVER-covers each notch by depth*notchDepth (~78mm^2 x several narrow
     // ribs = hundreds of mm^2). Ear-clipping conserves area to float32 precision.
