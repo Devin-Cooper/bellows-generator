@@ -1,53 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { computePageGrid, PAGE_SIZES, renderPageGridSVG, previewTransform, layerVisibilityCSS, mountPreview } from '../src/ui/preview.js';
+import { computePageGrid, renderPageGridSVG, previewTransform, layerVisibilityCSS, mountPreview } from '../src/ui/preview.js';
 
-describe('computePageGrid', () => {
-  it('exposes physical page sizes in mm', () => {
-    expect(PAGE_SIZES.A4).toEqual({ w: 210, h: 297 });
-  });
-
-  it('tiles a 360x200 sheet onto A4 with 10mm margin into 2 columns x 1 row', () => {
-    const grid = computePageGrid({ w: 360, h: 200 }, 'A4', 10);
-    // Two-sided margin model: strideX = 210 - 2*10 = 190 -> ceil(360/190) = 2 cols
-    //                         strideY = 297 - 2*10 = 277 -> ceil(200/277) = 1 row
-    expect(grid.cols).toBe(2);
+describe('computePageGrid (bed-sheet grid)', () => {
+  it('tiles a 900x300 sheet onto a 400x400 bed into 3 columns x 1 row', () => {
+    const grid = computePageGrid({ w: 900, h: 300 }, 400, 400);
+    expect(grid.cols).toBe(3);
     expect(grid.rows).toBe(1);
-    expect(grid.count).toBe(2);
-    expect(grid.overlap).toBe(10);
+    expect(grid.count).toBe(3);
+    expect(grid.bedW).toBe(400);
     expect(grid.tiles.map((t) => [t.page, t.x, t.y])).toEqual([
       [1, 0, 0],
-      [2, 190, 0],
+      [2, 400, 0],
+      [3, 800, 0],
     ]);
-    expect(grid.tiles[0]).toMatchObject({ w: 190, h: 277, col: 0, row: 0 });
+    expect(grid.tiles[0]).toMatchObject({ w: 400, h: 300, col: 0, row: 0 });
+    expect(grid.tiles[2].w).toBeCloseTo(100, 6); // remainder column clipped
   });
 
-  it('always emits at least one tile for a tiny sheet', () => {
-    const grid = computePageGrid({ w: 5, h: 5 }, 'A4', 10);
+  it('always emits at least one sheet for a tiny pattern', () => {
+    const grid = computePageGrid({ w: 5, h: 5 }, 609.6, 406.4);
     expect(grid.count).toBe(1);
     expect(grid.tiles[0].page).toBe(1);
-  });
-
-  it('falls back to A4 for an unknown page size', () => {
-    const grid = computePageGrid({ w: 5, h: 5 }, 'Foolscap');
-    expect(grid.pageSize).toBe('A4');
-    expect(grid.tiles[0]).toMatchObject({ w: 190, h: 277 });
   });
 });
 
 describe('renderPageGridSVG', () => {
-  it('draws a dashed boundary rect and page label per tile and records the overlap', () => {
-    const grid = computePageGrid({ w: 360, h: 200 }, 'A4', 10);
-    const svg = renderPageGridSVG(grid);
-    // one <rect> per tile
-    expect((svg.match(/<rect /g) || []).length).toBe(2);
-    // page numbers rendered
-    expect(svg).toContain('>Page 1<');
-    expect(svg).toContain('>Page 2<');
-    // dashed boundary + overlap metadata
+  it('draws a dashed bed rect + Sheet label per cell and records the bed size', () => {
+    const svg = renderPageGridSVG(computePageGrid({ w: 900, h: 300 }, 400, 400));
+    expect((svg.match(/<rect /g) || []).length).toBe(3);
+    expect(svg).toContain('>Sheet 1<');
+    expect(svg).toContain('>Sheet 3<');
     expect(svg).toContain('stroke-dasharray');
-    expect(svg).toContain('data-overlap="10"');
-    // second tile positioned at the stride (two-sided-margin model: stride = 190)
-    expect(svg).toContain('<rect x="190" y="0" width="190" height="277"');
+    expect(svg).toContain('data-bed="400x400"');
+    expect(svg).toContain('<rect x="400" y="0" width="400" height="300"');
   });
 });
 
@@ -79,16 +64,15 @@ function fakeContainer() {
 const previewOptions = () => ({
   patternSVG: '<svg id="pattern"><g inkscape:label="CUT"></g></svg>',
   model: { bounds: { w: 360, h: 200 } },
-  params: { pageSize: 'A4' },
+  params: { bedW: 609.6, bedH: 406.4 },
 });
 
 describe('mountPreview', () => {
-  it('injects the pattern SVG and the page-grid overlay on mount', () => {
+  it('injects the pattern SVG and the bed-grid overlay on mount', () => {
     const el = fakeContainer();
     mountPreview(el, previewOptions());
     expect(el.innerHTML).toContain('<svg id="pattern">');
-    expect(el.innerHTML).toContain('>Page 1<');
-    expect(el.innerHTML).toContain('>Page 2<');
+    expect(el.innerHTML).toContain('>Sheet 1<'); // 360x200 fits one 609.6x406.4 bed
     expect(el.innerHTML).toContain('scale(1)');
   });
 
@@ -111,11 +95,11 @@ describe('mountPreview', () => {
     expect(el.innerHTML).not.toContain('display:none');
   });
 
-  it('hides the page grid when toggled off and clears on destroy', () => {
+  it('hides the bed grid when toggled off and clears on destroy', () => {
     const el = fakeContainer();
     const api = mountPreview(el, previewOptions());
     api.setGridVisible(false);
-    expect(el.innerHTML).not.toContain('Page 1');
+    expect(el.innerHTML).not.toContain('Sheet 1');
     api.destroy();
     expect(el.innerHTML).toBe('');
   });

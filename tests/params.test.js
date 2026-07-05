@@ -15,7 +15,9 @@ describe('DEFAULT_PARAMS', () => {
     expect(DEFAULT_PARAMS.cornerAllowance).toBe(15);
     expect(DEFAULT_PARAMS.glueTab).toBe(10);
     expect(DEFAULT_PARAMS.endMargin).toBe(35);
-    expect(DEFAULT_PARAMS.pageSize).toBe('A4');
+    expect(DEFAULT_PARAMS.bedW).toBe(609.6);
+    expect(DEFAULT_PARAMS.bedH).toBe(406.4);
+    expect(DEFAULT_PARAMS.pageSize).toBeUndefined();
   });
 });
 

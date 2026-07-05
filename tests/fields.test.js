@@ -26,8 +26,8 @@ describe('FIELDS metadata', () => {
   it('marks select fields with kind + options matching the current controls', () => {
     expect(FIELDS.type.kind).toBe('select');
     expect(FIELDS.type.options).toEqual(['straight', 'tapered']);
-    expect(FIELDS.pageSize.kind).toBe('select');
-    expect(FIELDS.pageSize.options).toEqual(['A4', 'A3', 'Letter']);
+    expect(FIELDS.bedW.unit).toBe('mm');
+    expect(FIELDS.bedH.unit).toBe('mm');
   });
 
   it('carries the fine-grained steps from the current GROUPS', () => {

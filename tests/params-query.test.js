@@ -28,7 +28,7 @@ describe('paramsFromQuery', () => {
     const p = paramsFromQuery('?frontW=160&frontH=115');
     expect(p.frontW).toBe(160);
     expect(typeof p.frontW).toBe('number');
-    expect(p.pageSize).toBe('A4');
+    expect(p.bedW).toBe(609.6);
   });
 
   it('ignores unknown query keys', () => {

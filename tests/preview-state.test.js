@@ -16,7 +16,7 @@ function fakeContainer() {
 const baseOptions = () => ({
   patternSVG: '<svg id="pattern"><g inkscape:label="CUT"></g></svg>',
   model: { bounds: { w: 360, h: 200 } },
-  params: { pageSize: 'A4' },
+  params: { bedW: 609.6, bedH: 406.4 },
 });
 
 describe('mountPreview initialState seeding', () => {

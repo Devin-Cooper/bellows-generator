@@ -4,7 +4,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { wireExportButtons, triggerDownload } from '../src/export/download.js';
 
 const params = {
-  pageSize: 'A4',
   rib: 12,
   gap: 2.5,
   frontW: 150,
@@ -35,11 +34,10 @@ describe('download wiring', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
   });
 
-  it('wireExportButtons appends two labelled buttons', () => {
+  it('wireExportButtons appends the STL export button', () => {
     const container = document.createElement('div');
-    const { pdfBtn, stlBtn } = wireExportButtons(container, makeModel, () => params);
-    expect(container.querySelectorAll('button').length).toBe(2);
-    expect(pdfBtn.textContent).toBe('Export PDF');
+    const { stlBtn } = wireExportButtons(container, makeModel, () => params);
+    expect(container.querySelectorAll('button').length).toBe(1);
     expect(stlBtn.textContent).toBe('Export Rib STL');
   });
 

@@ -1,40 +1,47 @@
-export { PAGE_SIZES } from '../tiling.js';
-import { planTiles, TILE_MARGIN_MM } from '../tiling.js';
-
-/**
- * Lay printable page tiles over the flat sheet using the canonical two-sided-margin
- * model (stride = pageDim - 2*TILE_MARGIN_MM per axis). Delegates to planTiles so
- * the on-screen page overlay always agrees with the PDF exporter.
- *
- * The `overlap` parameter is kept for signature back-compatibility but is ignored;
- * the returned `overlap` field is always TILE_MARGIN_MM (10 mm).
- */
-export function computePageGrid(bounds, pageSize, overlap = 10) {  // eslint-disable-line no-unused-vars
-  const plan = planTiles(bounds, pageSize);
-  return {
-    pageSize: plan.pageSize,
-    overlap: TILE_MARGIN_MM,
-    cols: plan.cols,
-    rows: plan.rows,
-    count: plan.count,
-    tiles: plan.tiles,
-  };
-}
-
 const fmt = (n) => String(Math.round(n * 1e4) / 1e4);
 
-/** SVG <g> overlay (mm coords) marking PDF page tiles with numbers + overlap metadata. */
+/**
+ * Bed-sheet grid over the flat sheet (mm). Each cell is one laser-bed sheet (bedW x bedH),
+ * so the overlay shows exactly how many bed sheets the pattern tiles into and where the cuts
+ * fall. Replaces the retired A4/A3 PDF page tiling.
+ */
+export function computePageGrid(bounds, bedW, bedH) {
+  const w = bedW > 0 ? bedW : 1;
+  const h = bedH > 0 ? bedH : 1;
+  const cols = Math.max(1, Math.ceil(bounds.w / w));
+  const rows = Math.max(1, Math.ceil(bounds.h / h));
+  const tiles = [];
+  let index = 0;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      tiles.push({
+        index,
+        page: index + 1,
+        col,
+        row,
+        x: col * w,
+        y: row * h,
+        w: Math.min(w, bounds.w - col * w),
+        h: Math.min(h, bounds.h - row * h),
+      });
+      index++;
+    }
+  }
+  return { bedW: w, bedH: h, cols, rows, count: cols * rows, tiles };
+}
+
+/** SVG <g> overlay (mm coords) marking bed-sheet boundaries. */
 export function renderPageGridSVG(grid) {
   const rects = grid.tiles
     .map(
       (t) =>
         `    <rect x="${fmt(t.x)}" y="${fmt(t.y)}" width="${fmt(t.w)}" height="${fmt(t.h)}" ` +
         `fill="none" stroke="#8888ff" stroke-width="0.5" stroke-dasharray="4 2" />\n` +
-        `    <text x="${fmt(t.x + 4)}" y="${fmt(t.y + 10)}" font-size="8" fill="#8888ff">Page ${t.page}</text>`
+        `    <text x="${fmt(t.x + 4)}" y="${fmt(t.y + 10)}" font-size="8" fill="#8888ff">Sheet ${t.page}</text>`
     )
     .join('\n');
   return (
-    `  <g inkscape:groupmode="layer" inkscape:label="PAGE_GRID" data-overlap="${fmt(grid.overlap)}">\n` +
+    `  <g inkscape:groupmode="layer" inkscape:label="BED_GRID" data-bed="${fmt(grid.bedW)}x${fmt(grid.bedH)}">\n` +
     `${rects}\n  </g>`
   );
 }
@@ -73,7 +80,7 @@ function composePreview(opts, state) {
 export function mountPreview(container, options) {
   const { patternSVG, model, params } = options;
   const bounds = model.bounds;
-  const grid = computePageGrid(bounds, params.pageSize, options.overlap ?? 10);
+  const grid = computePageGrid(bounds, params.bedW, params.bedH);
   const opts = { patternSVG, bounds, grid };
   const init = options.initialState ?? {};
   const state = {
@@ -252,7 +259,7 @@ export function buildPreviewToolbar(api, options = {}) {
   gridBtn.className = 'toggle';
   gridBtn.dataset.grid = 'page';
   gridBtn.setAttribute('aria-pressed', String(options.showGrid ?? true));
-  gridBtn.textContent = 'Page grid';
+  gridBtn.textContent = 'Bed grid';
   gridBtn.addEventListener('click', () => {
     const on = gridBtn.getAttribute('aria-pressed') === 'true';
     gridBtn.setAttribute('aria-pressed', on ? 'false' : 'true');

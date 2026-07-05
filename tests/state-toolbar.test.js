@@ -52,7 +52,6 @@ vi.mock('../src/ui/preview.js', async () => {
 vi.mock('../src/export/download.js', () => ({
   makeSVGBlob: vi.fn(), downloadBlob: vi.fn(), triggerDownload: vi.fn(),
 }));
-vi.mock('../src/export/pdf.js', () => ({ exportTiledPDF: vi.fn(async () => new Uint8Array([0])) }));
 vi.mock('../src/export/stl.js', () => ({ exportRibsSTL: vi.fn(() => new ArrayBuffer(12)) }));
 
 import { initApp } from '../src/ui/state.js';

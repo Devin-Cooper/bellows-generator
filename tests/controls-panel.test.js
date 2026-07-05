@@ -16,7 +16,7 @@ describe('buildControlPanel', () => {
         'Corners, tabs & margins',
         'Material & laser',
         'Optics',
-        'Export',
+        'Laser bed',
       ]),
     );
   });
@@ -131,7 +131,6 @@ describe('buildControlPanel', () => {
     expect(byKind).toEqual({
       svg: 'Fold-pattern SVG',
       'svg-ribs': 'Rib-ladder SVG',
-      pdf: 'Tiled PDF',
       stl: 'Rib STL',
       'stl-full': 'Full ribs STL',
     });

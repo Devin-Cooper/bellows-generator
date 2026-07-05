@@ -5,7 +5,7 @@ import { mountPreview } from '../src/ui/preview.js';
 const previewOptions = () => ({
   patternSVG: '<svg id="pattern"><g inkscape:label="CUT"></g></svg>',
   model: { bounds: { w: 360, h: 200 } },
-  params: { pageSize: 'A4' },
+  params: { bedW: 609.6, bedH: 406.4 },
 });
 
 /** Build a bare pointer event with the fields mountPreview reads. */

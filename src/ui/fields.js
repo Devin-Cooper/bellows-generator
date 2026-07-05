@@ -119,12 +119,15 @@ export const FIELDS = {
     unit: 'mm',
     hint: 'Front standard + rear standoff + node-in-barrel, added to draw for magnification.',
   },
-  pageSize: {
-    label: 'PDF page size',
-    unit: '',
-    hint: 'Output PDF sheet size; sets how the pattern is tiled across pages.',
-    kind: 'select',
-    options: ['A4', 'A3', 'Letter'],
+  bedW: {
+    label: 'Laser bed width',
+    unit: 'mm',
+    hint: 'Cutting-bed X extent; master sheets tile across this width.',
+  },
+  bedH: {
+    label: 'Laser bed height',
+    unit: 'mm',
+    hint: 'Cutting-bed Y extent; rib lattices split into bed-height segments.',
   },
 };
 

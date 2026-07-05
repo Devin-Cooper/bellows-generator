@@ -9,7 +9,6 @@ const WARNING_MESSAGES = {
 const EXPORT_LABELS = {
   svg: 'Fold-pattern SVG',
   'svg-ribs': 'Rib-ladder SVG',
-  pdf: 'Tiled PDF',
   stl: 'Rib STL',
   'stl-full': 'Full ribs STL',
 };
@@ -47,7 +46,7 @@ const GROUPS = [
   { title: 'Corners, tabs & margins', fields: ['cornerMode', 'cornerAllowance', 'glueTab', 'endMargin'] },
   { title: 'Material & laser', fields: ['fabricThickness', 'ribThickness', 'kerf', 'bedSize', 'printOffset'] },
   { title: 'Optics', fields: ['focalLength', 'opticalOffset'] },
-  { title: 'Export', fields: ['pageSize'] },
+  { title: 'Laser bed', fields: ['bedW', 'bedH'] },
 ];
 
 export function buildControlPanel(opts = {}) {
@@ -118,7 +117,7 @@ export function buildControlPanel(opts = {}) {
 
   const exportBar = document.createElement('div');
   exportBar.className = 'export-bar';
-  for (const kind of ['svg', 'svg-ribs', 'pdf', 'stl', 'stl-full']) {
+  for (const kind of ['svg', 'svg-ribs', 'stl', 'stl-full']) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn';

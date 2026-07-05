@@ -5,13 +5,16 @@ export const DEFAULT_PARAMS = {
   rib: 12, gap: 2.5, ribCount: null, cornerAllowance: 15,
   glueTab: 10, endMargin: 35,
   fabricThickness: 0.5, ribThickness: 0.4, kerf: 0.15,
-  focalLength: 150, opticalOffset: 40, pageSize: 'A4',
+  focalLength: 150, opticalOffset: 40,
   // Stiffener overhaul: corner-stiffening mode + 3D-print bed/offset.
   // cornerMode: 'clear' (default, open corners) | 'interlock' (complementary point/notch
   // corners that nest as the tube folds). Legacy 'pointed'/'alternating' migrate to
   // 'interlock' in normalizeParams. bedSize = 3D print bed (mm) for column bed-wrap.
   // printOffset = inward 3D offset (mm), opposite sign to laser kerf.
   cornerMode: 'clear', bedSize: 220, printOffset: 0.1,
+  // Laser cutting bed (mm): master sheets tile into bedW x bedH cells. Distinct from the
+  // 3D-print bedSize and the retired A4/A3 printer pageSize. Default 24x16in.
+  bedW: 609.6, bedH: 406.4,
 };
 
 export const A6_PRESET = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115, rearW: 160, rearH: 115 };

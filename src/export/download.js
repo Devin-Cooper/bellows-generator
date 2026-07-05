@@ -1,5 +1,4 @@
 import { renderPatternSVG, renderRibLadderSVG } from '../render/svg.js';
-import { exportTiledPDF } from './pdf.js';
 import { exportRibsSTL } from './stl.js';
 
 /**
@@ -81,19 +80,6 @@ export function triggerDownload(data, filename, mimeType) {
 }
 
 export function wireExportButtons(container, getModel, getParams) {
-  const pdfBtn = document.createElement('button');
-  pdfBtn.textContent = 'Export PDF';
-  pdfBtn.className = 'export-pdf';
-  pdfBtn.addEventListener('click', async () => {
-    pdfBtn.disabled = true;
-    try {
-      const bytes = await exportTiledPDF(getModel(), getParams());
-      triggerDownload(bytes, 'bellows-pattern.pdf', 'application/pdf');
-    } finally {
-      pdfBtn.disabled = false;
-    }
-  });
-
   const stlBtn = document.createElement('button');
   stlBtn.textContent = 'Export Rib STL';
   stlBtn.className = 'export-stl';
@@ -101,8 +87,6 @@ export function wireExportButtons(container, getModel, getParams) {
     const buf = exportRibsSTL(getModel(), getParams());
     triggerDownload(buf, 'bellows-ribs.stl', 'model/stl');
   });
-
-  container.appendChild(pdfBtn);
   container.appendChild(stlBtn);
-  return { pdfBtn, stlBtn };
+  return { stlBtn };
 }

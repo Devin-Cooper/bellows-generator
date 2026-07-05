@@ -6,7 +6,6 @@ import { buildControlPanel } from './controls.js';
 import { buildAppShell } from './appShell.js';
 import { mountPreview, buildPreviewToolbar } from './preview.js';
 import { makeSVGBlob, downloadBlob, triggerDownload } from '../export/download.js';
-import { exportTiledPDF } from '../export/pdf.js';
 import { exportRibsSTL, exportFullRibsSTL } from '../export/stl.js';
 
 const HINTS_KEY = 'bellows.hintsOn';
@@ -146,9 +145,6 @@ export function initApp(rootEl) {
       downloadBlob(makeSVGBlob(renderPatternSVG(model, params)), 'bellows-fold-pattern.svg');
     } else if (kind === 'svg-ribs') {
       downloadBlob(makeSVGBlob(renderRibLadderSVG(model, params)), 'bellows-rib-ladder.svg');
-    } else if (kind === 'pdf') {
-      const bytes = await exportTiledPDF(model, params);
-      triggerDownload(bytes, 'bellows-pattern.pdf', 'application/pdf');
     } else if (kind === 'stl') {
       triggerDownload(exportRibsSTL(model, params), 'bellows-ribs.stl', 'model/stl');
     } else if (kind === 'stl-full') {
