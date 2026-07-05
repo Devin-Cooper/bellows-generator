@@ -103,14 +103,14 @@ export function buildStraightPattern(params) {
     // shape.width/2 flush to the seam, full columns are centred. y-band comes from the
     // engine's DATUM-RELATIVE yBand PLUS the fabric endMargin origin, so the fabric
     // underlay overlays the laser ladder 1:1. Footprints already route shape.points so
-    // pointed/alternating corner ends flow through here with no extra handling needed.
+    // interlock point/notch corner ends flow through here with no extra handling needed.
     const isHalf = f === 0 || f === 4;
     for (let r = 0; r < ribCount; r++) {
       const shape = shapeFor(faceType[f], r);
       const ry0 = params.endMargin + shape.yBand.y0; // fabric endMargin datum
       // Position the CANONICAL rib polygon (computeRibShapes.points) in fabric space
       // instead of a fresh width-rectangle. In clear mode points IS the inset rectangle,
-      // so full columns stay byte-identical; pointed/alternating carry the 45deg apex here.
+      // so full columns stay byte-identical; interlock carries the point/notch ends here.
       let poly;
       let ox;
       if (isHalf) {

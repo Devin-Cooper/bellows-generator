@@ -80,7 +80,7 @@ export function renderPatternSVG(model, params) {
  *   interior notch). "Outward" is derived from the polygon's own signed-area winding, so both the
  *   outer boundary and the notch rectangles offset in the right direction regardless of trace
  *   order. Axis-aligned right-angle corners move by exactly (+-delta, +-delta) — geometrically
- *   identical to the former offsetFromCentre for clear (rectangular) columns.
+ *   identical to the former bbox-centre radial offset for clear (rectangular) columns.
  * @param {{x:number,y:number}[]} points  simple polygon, no repeated closing vertex
  * @param {number} delta  signed offset distance (mm)
  * @returns {{x:number,y:number}[]}

@@ -82,6 +82,28 @@ describe('earClip — concavity-safe cap triangulation', () => {
     }
   });
 
+  it('(a2) a TINY-FACE narrow rib (width < 2*notchDepth) still caps cleanly: V-2 tris, none degenerate', () => {
+    // frontW=frontH=40, ca=15 -> width=10; rib=12 -> reach=6, natural notchDepth=6.5 > width/2.
+    // Un-clamped the reflex vertices cross (bowtie): earClip drops below V-2 and the 4V-4 header
+    // math leaves zero-area / degenerate triangles in the buffer (non-manifold STL). The notch-
+    // depth clamp keeps the polygon simple, so the cap triangulates exactly.
+    const s = narrowRib(shapesFor({ cornerMode: 'interlock', frontW: 40, frontH: 40, rearW: 40, rearH: 40, ribCount: 3 }));
+    expect(s, 'a narrow rib exists on the tiny face').toBeTruthy();
+    const P = s.points;
+    const tris = earClip(P);
+    expect(tris.length).toBe(P.length - 2); // exactly V-2 triangles (no dropped ears)
+
+    const poly = signedArea(P);
+    expect(poly).toBeGreaterThan(0);
+    let sum = 0;
+    for (const [a, b, c] of tris) {
+      const ar = triArea(P[a], P[b], P[c]);
+      expect(ar).toBeGreaterThan(1e-9); // strictly positive -> no degenerate / zero-area / flipped tri
+      sum += ar;
+    }
+    expect(sum).toBeCloseTo(poly, 6); // area conserved -> the cap is the polygon, void left empty
+  });
+
   it('(b) convex clear + wide ribs still triangulate exactly (V-2, area-conserving)', () => {
     const rect = shapesFor({ cornerMode: 'clear' })[0].points; // 4-vertex rectangle
     const rt = earClip(rect);

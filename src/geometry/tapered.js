@@ -86,7 +86,7 @@ export function buildTaperedPattern(params) {
   // from the engine (honours taper); the split-W edge columns (0 & 4) show shape.width/2.
   // Polygons are centred on the rear-based column centre, matching the existing trapezoid
   // layout, and use the engine yBand PLUS the endMargin origin so they register to the
-  // ladder. Footprints already route shape.points so pointed/alternating ends flow through.
+  // ladder. Footprints already route shape.points so interlock point/notch ends flow through.
   for (let i = 0; i < n; i++) {
     for (let c = 0; c < faceKinds.length; c++) {
       const shape = shapeFor(faceKinds[c], i);

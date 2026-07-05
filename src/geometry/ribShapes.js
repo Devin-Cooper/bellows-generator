@@ -18,6 +18,13 @@ const WALL_FACES = ['W', 'H', 'W', 'H'];
 // never bottoms out / pierces the cloth (Mitchell). Small, non-negative, derived — NOT a UI param.
 export const CORNER_CLEARANCE = 0.5;
 
+// Minimum positive margin (mm) kept between the two notch reflex vertices of a NARROW rib. The
+// natural notchDepth (reach + CORNER_CLEARANCE) is clamped to STRICTLY below width/2 by this much,
+// so on a tiny face (width < 2*notchDepth, sub-~43mm at defaults) the reflexes can never cross into
+// a self-intersecting bowtie — the notch just gets shallower (graceful degradation, not an error).
+// Inactive for normal faces (width >> 2*notchDepth), where the natural depth is always chosen.
+const NOTCH_CROSS_MARGIN = 1e-6;
+
 /**
  * Canonical per-(wall, rib) rib shapes — the SINGLE source of rib-shape truth.
  * One entry per (wall, ribIndex): four walls per ring (two 'W', two 'H').
@@ -61,7 +68,9 @@ export function computeRibShapes(params) {
       const y1 = y0 + rib;
       const depth = y1 - y0;
       const reach = cornerPointReach(depth, ca);
-      const notchDepth = cornerNotchDepth(reach);   // = reach + CORNER_CLEARANCE
+      // = reach + CORNER_CLEARANCE, but clamped STRICTLY below width/2 so the narrow-rib notch
+      // reflexes (x = notchDepth and x = width - notchDepth) can never cross on a tiny face.
+      const notchDepth = Math.min(cornerNotchDepth(reach), (width - NOTCH_CROSS_MARGIN) / 2);
       const ends = cornerModeEnds(params.cornerMode ?? 'clear', wallIndex, ribIndex);
       const points = ribPolygon(width, depth, ends, reach, notchDepth);
       shapes.push({

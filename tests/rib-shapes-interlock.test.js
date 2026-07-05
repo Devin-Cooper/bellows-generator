@@ -122,3 +122,70 @@ describe('computeRibShapes cornerMode=interlock', () => {
     }
   });
 });
+
+// TINY FACE (width < 2*notchDepth): the natural notchDepth = reach + CORNER_CLEARANCE would push
+// the two notch reflex vertices (x = notchDepth and x = width - notchDepth) PAST each other, so the
+// narrow-rib hexagon self-intersects (bowtie) and silently corrupts the STL cap / ladder tracer.
+// The effective notch depth is clamped STRICTLY below width/2 so the reflex vertices can never
+// cross — the notch just gets shallower (graceful degradation), never invalid.
+describe('computeRibShapes interlock — tiny-face notch clamp', () => {
+  // frontW=frontH=40, ca=15 -> inset width=10; rib=12 -> reach=6, natural notchDepth=6.5 > width/2.
+  const TINY = { ...DEFAULT_PARAMS, frontW: 40, frontH: 40, rearW: 40, rearH: 40, ribCount: 3 };
+  const isNarrowRib = (s) => s.points.some((p) => p.x > 0 && p.x < s.width);
+
+  // proper (strict) segment intersection — shared endpoints / touching don't count.
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const segsCross = (p1, p2, p3, p4) => {
+    const d1 = cross(p3, p4, p1);
+    const d2 = cross(p3, p4, p2);
+    const d3 = cross(p1, p2, p3);
+    const d4 = cross(p1, p2, p4);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+           ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  };
+  const isSimplePolygon = (P) => {
+    const n = P.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (Math.abs(i - j) <= 1) continue;         // adjacent edges share a vertex
+        if (i === 0 && j === n - 1) continue;        // wrap-around adjacency
+        if (segsCross(P[i], P[(i + 1) % n], P[j], P[(j + 1) % n])) return false;
+      }
+    }
+    return true;
+  };
+  const signedArea = (P) => {
+    let a = 0;
+    for (let i = 0; i < P.length; i++) {
+      const p = P[i]; const q = P[(i + 1) % P.length];
+      a += p.x * q.y - q.x * p.y;
+    }
+    return a / 2;
+  };
+
+  it('every NARROW rib keeps its notch reflexes UNCROSSED (left.x < width/2 < right.x, strictly)', () => {
+    const shapes = computeRibShapes({ ...TINY, cornerMode: 'interlock' });
+    const narrow = shapes.filter((s) => isNarrowRib(s));
+    expect(narrow.length).toBeGreaterThan(0);
+    for (const s of narrow) {
+      // ribPolygon contract: narrow rib is [v0, v1, RIGHT-notch(2), v3, v4, LEFT-notch(5)].
+      // Identify reflexes by ROLE (not by sorted x) so a CROSSED (swapped-side) pair is caught.
+      expect(s.points.length).toBe(6);
+      const rightReflex = s.points[2]; // x = width - notchDepth (right corner end)
+      const leftReflex = s.points[5];  // x = notchDepth       (left corner end)
+      expect(leftReflex.x).toBeLessThan(s.width / 2);     // left reflex strictly LEFT of mid-width
+      expect(rightReflex.x).toBeGreaterThan(s.width / 2); // right reflex strictly RIGHT of mid-width
+      expect(leftReflex.x).toBeLessThan(rightReflex.x);   // reflexes NEVER cross (no bowtie)
+    }
+  });
+
+  it('every NARROW rib polygon is a SIMPLE (non-self-intersecting) CCW hexagon', () => {
+    const shapes = computeRibShapes({ ...TINY, cornerMode: 'interlock' });
+    const narrow = shapes.filter((s) => isNarrowRib(s));
+    expect(narrow.length).toBeGreaterThan(0);
+    for (const s of narrow) {
+      expect(isSimplePolygon(s.points), 'no self-intersection').toBe(true);
+      expect(signedArea(s.points)).toBeGreaterThan(0); // canonical CCW ring, positive area
+    }
+  });
+});
