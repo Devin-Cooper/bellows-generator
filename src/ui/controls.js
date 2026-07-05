@@ -11,6 +11,7 @@ const EXPORT_LABELS = {
   'svg-ribs': 'Rib-ladder SVG',
   pdf: 'Tiled PDF',
   stl: 'Rib STL',
+  'stl-full': 'Full ribs STL',
 };
 
 export function formatReadouts(metrics) {
@@ -117,7 +118,7 @@ export function buildControlPanel(opts = {}) {
 
   const exportBar = document.createElement('div');
   exportBar.className = 'export-bar';
-  for (const kind of ['svg', 'svg-ribs', 'pdf', 'stl']) {
+  for (const kind of ['svg', 'svg-ribs', 'pdf', 'stl', 'stl-full']) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn';

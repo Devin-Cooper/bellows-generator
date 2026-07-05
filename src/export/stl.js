@@ -1,6 +1,7 @@
 // src/export/stl.js
 import { normalizeParams } from '../params.js';
 import { computeRibShapes } from '../geometry/ribShapes.js';
+import { computeWallRibLayout } from '../geometry/wallRibLayout.js';
 
 // Breakaway bridge width (mm): mirrors the laser lattice connector tab (<=2mm) so a
 // printed column is one placeable object whose ribs snap apart after bonding. Added in
@@ -224,17 +225,16 @@ export function earClip(points) {
 }
 
 /**
- * Binary STL of the rib solids. Each solid is a prism: its base polygon (V vertices)
- * extruded z0..z1 -> (V-2) top + (V-2) bottom + 2V side triangles = 4V-4. The header
- * count is therefore SHAPE-AWARE (clear rectangles -> 12; interlock point/notch ends add
- * triangles), replacing the old fixed 12*ribCount.
- * @param {import('../geometry/types.js').PatternModel} model
- * @param {Object} params
+ * Binary STL of a list of prism solids — shared by the bed-breakup (exportRibsSTL) and the
+ * full/flat (exportFullRibsSTL) exports. Each solid extrudes its base polygon (V vertices)
+ * z0..z1 -> (V-2) top + (V-2) bottom + 2V side triangles = 4V-4, so the header count is
+ * SHAPE-AWARE (a clear rectangle -> 12; a trapezoid corner end adds triangles). Caps are ear-
+ * clipped (convex OR concave-safe) and wound OUTWARD (+z top / -z bottom); the stored normal is
+ * zeroed and slicers recompute it.
+ * @param {{points:{x:number,y:number}[],z0:number,z1:number}[]} solids
  * @returns {ArrayBuffer}
  */
-export function exportRibsSTL(model, params) {
-  const p = normalizeParams(params);
-  const solids = computeRibOutlines(model, p);
+function writeBinarySTL(solids) {
   const triCount = solids.reduce((n, s) => n + 4 * s.points.length - 4, 0);
   const buf = new ArrayBuffer(84 + triCount * 50);
   const dv = new DataView(buf);
@@ -256,18 +256,102 @@ export function exportRibsSTL(model, params) {
     const n = P.length;
     const bot = (i) => [P[i].x, P[i].y, s.z0];
     const top = (i) => [P[i].x, P[i].y, s.z1];
-    // Concavity-safe caps: ear-clip the (possibly notched) base polygon so an interlock
-    // notch void is left EMPTY. A vertex-0 fan would span that void -> non-manifold. Count is
-    // n-2 per cap, so the 4V-4 header math is unchanged. earClip returns CCW triples: use
-    // them directly for the top (+z outward) and reversed for the bottom (-z outward).
+    // Ear-clipped caps (n-2 per cap) keep the 4V-4 header math and stay manifold for any simple
+    // polygon. earClip returns CCW triples: use them directly for the top (+z outward) and
+    // reversed for the bottom (-z outward).
     const cap = earClip(P);
     for (const [a, b, c] of cap) tri(bot(a), bot(c), bot(b)); // bottom cap, -z outward
     for (const [a, b, c] of cap) tri(top(a), top(b), top(c)); // top cap,    +z outward
-    for (let i = 0; i < n; i++) {                             // side walls (unchanged)
+    for (let i = 0; i < n; i++) {                             // side walls
       const j = (i + 1) % n;
       tri(bot(i), bot(j), top(j));
       tri(bot(i), top(j), top(i));
     }
   }
   return buf;
+}
+
+/**
+ * Binary STL of the BED-BREAKUP rib solids (columns bed-wrapped into snap-apart segments).
+ * @param {import('../geometry/types.js').PatternModel} model
+ * @param {Object} params
+ * @returns {ArrayBuffer}
+ */
+export function exportRibsSTL(model, params) {
+  const p = normalizeParams(params);
+  return writeBinarySTL(computeRibOutlines(model, p));
+}
+
+/**
+ * Rib solids for the FULL/FLAT print: all four WHOLE walls (W,H,W,H) laid out unrolled at their
+ * fabric positions. computeWallRibLayout supplies the unrolled x (corner-fold gaps between
+ * walls), the y = endMargin + ribIndex*pitch datum, the per-pleat clear width, and the corrected
+ * rib-local trapezoids. There is NO bed-wrap (a 1:1 layout by design): every wall is one snap-
+ * apart lattice bridged by two inset breakaway tabs per gap (Feature A / bridgeTabXs). Each rib
+ * is shrunk INWARD by printOffset then translated to its (x,y). `model` is unused (rib data comes
+ * from computeWallRibLayout) but kept for the caller signature parity with computeRibOutlines.
+ * @param {import('../geometry/types.js').PatternModel} model
+ * @param {Object} params
+ * @returns {{kind:'rib'|'bridge',face:'W'|'H',wallIndex:number,ribIndex:number,points:{x:number,y:number}[],z0:number,z1:number}[]}
+ */
+export function computeFullRibOutlines(model, params) {
+  const p = normalizeParams(params);
+  const layout = computeWallRibLayout(p);
+  const off = p.printOffset;
+  const ca = p.cornerAllowance;
+  const z0 = 0;
+  const z1 = p.ribThickness;
+
+  // group entries by wall, preserving W,H,W,H order and ribIndex order within a wall
+  const byWall = new Map();
+  for (const e of layout) {
+    if (!byWall.has(e.wallIndex)) byWall.set(e.wallIndex, []);
+    byWall.get(e.wallIndex).push(e);
+  }
+
+  const solids = [];
+  for (const wallIndex of [...byWall.keys()].sort((a, b) => a - b)) {
+    const entries = byWall.get(wallIndex).slice().sort((a, b) => a.ribIndex - b.ribIndex);
+    const face = entries[0].face;
+    const spans = [];
+    for (const e of entries) {
+      // shrink INWARD by printOffset (toward the rib's own centre), then translate to (x,y).
+      const pts = insetPolygon(e.points, off).map((pt) => ({ x: pt.x + e.x, y: pt.y + e.y }));
+      solids.push({ kind: 'rib', face, wallIndex, ribIndex: e.ribIndex, points: pts, z0, z1 });
+      const ext = yExtent(pts);
+      // clear-width x-edges are the whole rib's flat edges [x, x+width] (NOT the point reach).
+      spans.push({ yMin: ext.min, yMax: ext.max, xClear0: e.x, xClear1: e.x + e.width });
+    }
+    // TWO inset tabs per gap — the wall is whole (no bed-wrap), so EVERY consecutive gap is bridged.
+    for (let k = 0; k < spans.length - 1; k++) {
+      const y0 = spans[k].yMax - BRIDGE_OVERLAP;
+      const y1 = spans[k + 1].yMin + BRIDGE_OVERLAP;
+      const cl = Math.max(spans[k].xClear0, spans[k + 1].xClear0); // shared clear-left overlap
+      const cr = Math.min(spans[k].xClear1, spans[k + 1].xClear1); // narrower clear-right overlap
+      for (const tx of bridgeTabXs(cr - cl, (cl + cr) / 2, ca)) {
+        solids.push({
+          kind: 'bridge', face, wallIndex, ribIndex: entries[k].ribIndex,
+          points: [
+            { x: tx - BRIDGE_WIDTH / 2, y: y0 },
+            { x: tx + BRIDGE_WIDTH / 2, y: y0 },
+            { x: tx + BRIDGE_WIDTH / 2, y: y1 },
+            { x: tx - BRIDGE_WIDTH / 2, y: y1 },
+          ],
+          z0, z1,
+        });
+      }
+    }
+  }
+  return solids;
+}
+
+/**
+ * Binary STL of the FULL/FLAT whole-wall layout (computeFullRibOutlines).
+ * @param {import('../geometry/types.js').PatternModel} model
+ * @param {Object} params
+ * @returns {ArrayBuffer}
+ */
+export function exportFullRibsSTL(model, params) {
+  const p = normalizeParams(params);
+  return writeBinarySTL(computeFullRibOutlines(model, p));
 }

@@ -133,6 +133,7 @@ describe('buildControlPanel', () => {
       'svg-ribs': 'Rib-ladder SVG',
       pdf: 'Tiled PDF',
       stl: 'Rib STL',
+      'stl-full': 'Full ribs STL',
     });
   });
 

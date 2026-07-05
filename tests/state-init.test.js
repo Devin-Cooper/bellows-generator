@@ -55,6 +55,7 @@ vi.mock('../src/export/pdf.js', () => ({
 }));
 vi.mock('../src/export/stl.js', () => ({
   exportRibsSTL: vi.fn(() => new ArrayBuffer(12)),
+  exportFullRibsSTL: vi.fn(() => new ArrayBuffer(12)),
 }));
 
 import { initApp } from '../src/ui/state.js';
@@ -138,6 +139,15 @@ describe('initApp', () => {
     root.querySelector('[data-export="stl"]').click();
     expect(triggerDownload).toHaveBeenCalled();
     expect(triggerDownload.mock.calls[0][1]).toBe('bellows-ribs.stl');
+  });
+
+  it('onExport stl-full triggers triggerDownload with the full-ribs stl filename', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    initApp(root);
+    root.querySelector('[data-export="stl-full"]').click();
+    expect(triggerDownload).toHaveBeenCalled();
+    expect(triggerDownload.mock.calls[0][1]).toBe('bellows-ribs-full.stl');
   });
 
   it('slider uses fresh params immediately after a param change without waiting for debounce', () => {

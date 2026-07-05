@@ -7,7 +7,7 @@ import { buildAppShell } from './appShell.js';
 import { mountPreview, buildPreviewToolbar } from './preview.js';
 import { makeSVGBlob, downloadBlob, triggerDownload } from '../export/download.js';
 import { exportTiledPDF } from '../export/pdf.js';
-import { exportRibsSTL } from '../export/stl.js';
+import { exportRibsSTL, exportFullRibsSTL } from '../export/stl.js';
 
 const HINTS_KEY = 'bellows.hintsOn';
 
@@ -151,6 +151,8 @@ export function initApp(rootEl) {
       triggerDownload(bytes, 'bellows-pattern.pdf', 'application/pdf');
     } else if (kind === 'stl') {
       triggerDownload(exportRibsSTL(model, params), 'bellows-ribs.stl', 'model/stl');
+    } else if (kind === 'stl-full') {
+      triggerDownload(exportFullRibsSTL(model, params), 'bellows-ribs-full.stl', 'model/stl');
     }
   }
 
