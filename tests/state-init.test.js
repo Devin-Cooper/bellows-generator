@@ -19,6 +19,7 @@ vi.mock('../src/geometry/index.js', () => ({
 }));
 vi.mock('../src/render/svg.js', () => ({
   renderPatternSVG: vi.fn(() => '<svg data-mock="1"></svg>'),
+  renderPatternSheets: vi.fn(() => ['<svg data-mock="1"></svg>']),
   renderRibLadderSVG: vi.fn(() => '<svg data-rib="1"></svg>'),
   renderRibMasterSheets: vi.fn(() => ['<svg data-rib="1"></svg>']),
 }));
@@ -49,6 +50,7 @@ vi.mock('../src/ui/preview.js', () => ({
 vi.mock('../src/export/download.js', () => ({
   makeSVGBlob: vi.fn((svg) => new Blob([svg], { type: 'image/svg+xml' })),
   downloadBlob: vi.fn(),
+  downloadPatternSheets: vi.fn(),
   triggerDownload: vi.fn(),
 }));
 vi.mock('../src/export/stl.js', () => ({
@@ -58,10 +60,10 @@ vi.mock('../src/export/stl.js', () => ({
 
 import { initApp } from '../src/ui/state.js';
 import { buildPatternModel, buildFoldModel } from '../src/geometry/index.js';
-import { renderPatternSVG } from '../src/render/svg.js';
+import { renderPatternSVG, renderPatternSheets } from '../src/render/svg.js';
 import { BellowsViewer } from '../src/render/three.js';
 import { mountPreview } from '../src/ui/preview.js';
-import { downloadBlob, triggerDownload } from '../src/export/download.js';
+import { downloadBlob, downloadPatternSheets, triggerDownload } from '../src/export/download.js';
 
 describe('initApp', () => {
   beforeEach(() => {
@@ -112,13 +114,15 @@ describe('initApp', () => {
     expect(viewer.setExtension).toHaveBeenCalledWith(0.5);
   });
 
-  it('onExport svg triggers downloadBlob with the fold-pattern filename', () => {
+  it('onExport svg exports the fold pattern as bed-sized master sheets', () => {
     const root = document.createElement('div');
     document.body.appendChild(root);
     initApp(root);
     root.querySelector('[data-export="svg"]').click();
-    expect(downloadBlob).toHaveBeenCalled();
-    expect(downloadBlob.mock.calls[0][1]).toBe('bellows-fold-pattern.svg');
+    expect(renderPatternSheets).toHaveBeenCalled();
+    expect(downloadPatternSheets).toHaveBeenCalledTimes(1);
+    // the bed-sheets array (from renderPatternSheets) is what gets downloaded
+    expect(downloadPatternSheets.mock.calls[0][0]).toEqual(['<svg data-mock="1"></svg>']);
   });
 
   it('onExport svg-ribs downloads per-bed-sheet rib SVGs', () => {

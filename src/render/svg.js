@@ -42,9 +42,15 @@ function pathData(points, closed) {
   return closed ? `${d} Z` : d;
 }
 
-export function renderPatternSVG(model, params) {
-  const { w, h } = model.bounds;
-
+/**
+ * Build the ordered inkscape LAYER groups for a continuous flat drawing. Extracted so BOTH the
+ * whole-sheet renderPatternSVG (preview + legacy single-file) and the bed-sized master sheets
+ * share ONE segment/kerf code path. Byte-identical to the former inline body of renderPatternSVG.
+ * @param {import('../geometry/types.js').PatternModel} model
+ * @param {object} params
+ * @returns {string} the "<g …>…</g>" groups joined by "\n"
+ */
+function patternLayerGroups(model, params) {
   const byType = new Map();
   for (const seg of model.segments) {
     if (!byType.has(seg.type)) byType.set(seg.type, []);
@@ -66,13 +72,88 @@ export function renderPatternSVG(model, params) {
         `stroke="${LAYER_COLORS[type]}" fill="none">\n${paths}\n  </g>`
     );
   }
+  return groups.join('\n');
+}
 
+export function renderPatternSVG(model, params) {
+  const { w, h } = model.bounds;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
     `width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="0 0 ${fmt(w)} ${fmt(h)}">\n` +
-    groups.join('\n') +
+    patternLayerGroups(model, params) +
     `\n</svg>`
+  );
+}
+
+/**
+ * Bed-sized grid tiling for a continuous flat drawing. Bed-sized re-implementation of the retired
+ * `planTiles`: NO bleed margin, NO crop marks, NO page-N labels — each tile is exactly ONE laser
+ * bed (bedW x bedH mm) and tiles butt edge-to-edge (stride == bed size).
+ * @param {{w:number,h:number}} bounds  flat drawing extent (mm)
+ * @param {{bedW:number,bedH:number}} params
+ * @returns {{cols:number,rows:number,count:number,bedW:number,bedH:number,
+ *   tiles: Array<{index:number,col:number,row:number,x:number,y:number,w:number,h:number}>}}
+ */
+export function planBedTiles(bounds, params) {
+  const bedW = params.bedW;
+  const bedH = params.bedH;
+  const cols = Math.max(1, Math.ceil(bounds.w / bedW));
+  const rows = Math.max(1, Math.ceil(bounds.h / bedH));
+  const tiles = [];
+  let index = 0;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      tiles.push({ index, col, row, x: col * bedW, y: row * bedH, w: bedW, h: bedH });
+      index++;
+    }
+  }
+  return { cols, rows, count: cols * rows, bedW, bedH, tiles };
+}
+
+/**
+ * Bed-sized fold-pattern MASTER SHEETS. The continuous fold pattern is grid-tiled/cropped at
+ * bedW x bedH (`planBedTiles`); each tile becomes one 1:1-mm SVG whose viewport shows only that
+ * bed's slice — content is translated by (-tileX,-tileY) and clipped to the bed rect — plus a
+ * 50 mm ENGRAVE calibration square in sheet-local coords. Overflow yields multiple sheets
+ * (row-major). No crop marks / bleed / page-N labels (unlike the retired tiled PDF). The outer
+ * <svg> viewport AND the clipPath both crop, so paths that run off the bed are not cut.
+ * @param {import('../geometry/types.js').PatternModel} model
+ * @param {object} params  must carry bedW/bedH (mm) and kerf
+ * @returns {string[]} one SVG string per bed sheet
+ */
+export function renderPatternSheets(model, params) {
+  const plan = planBedTiles(model.bounds, params);
+  const groups = patternLayerGroups(model, params);
+  const bedW = params.bedW;
+  const bedH = params.bedH;
+  const CALIBRATION_MM = 50; // 1:1 scale check — mirrors renderRibLadderSVG + the retired PDF
+  const margin = 5;
+  const calX = margin;
+  const calY = Math.max(margin, bedH - margin - CALIBRATION_MM);
+  const calGroup =
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">` +
+    `<rect data-role="calibration" x="${fmt(calX)}" y="${fmt(calY)}" ` +
+    `width="${fmt(CALIBRATION_MM)}" height="${fmt(CALIBRATION_MM)}"/>` +
+    `<text data-role="calibration-label" x="${fmt(calX)}" y="${fmt(calY - 1)}" ` +
+    `font-size="3">${CALIBRATION_MM} mm</text>` +
+    `</g>`;
+
+  return plan.tiles.map(
+    (t) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" ` +
+      `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
+      `data-sheet="${t.index + 1}" data-sheets="${plan.count}" ` +
+      `data-col="${t.col}" data-row="${t.row}" ` +
+      `width="${fmt(bedW)}mm" height="${fmt(bedH)}mm" viewBox="0 0 ${fmt(bedW)} ${fmt(bedH)}">\n` +
+      `<defs><clipPath id="bed"><rect x="0" y="0" ` +
+      `width="${fmt(bedW)}" height="${fmt(bedH)}"/></clipPath></defs>\n` +
+      `<g clip-path="url(#bed)"><g transform="translate(${fmt(-t.x)},${fmt(-t.y)})">\n` +
+      groups +
+      `\n</g></g>\n` +
+      calGroup +
+      `\n</svg>`
   );
 }
 

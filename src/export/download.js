@@ -66,6 +66,20 @@ export function attachSVGExportButtons({
   });
 }
 
+/**
+ * Download each bed-sized fold-pattern master sheet as its own 1:1 SVG file
+ * (`bellows-fold-pattern-sheet-N.svg`). `doc`/`urlLib` inject through downloadBlob for testing.
+ * @param {string[]} sheets  SVG markup per bed sheet (from renderPatternSheets)
+ * @param {{doc?: Document, urlLib?: typeof URL}} [opts]
+ * @returns {number} the number of sheets downloaded
+ */
+export function downloadPatternSheets(sheets, opts = {}) {
+  sheets.forEach((svg, i) =>
+    downloadBlob(makeSVGBlob(svg), `bellows-fold-pattern-sheet-${i + 1}.svg`, opts)
+  );
+  return sheets.length;
+}
+
 export function triggerDownload(data, filename, mimeType) {
   const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
   const url = URL.createObjectURL(blob);

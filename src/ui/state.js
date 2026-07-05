@@ -1,11 +1,11 @@
 import { paramsFromQuery, paramsToQuery } from '../params.js';
 import { buildPatternModel, buildFoldModel } from '../geometry/index.js';
-import { renderPatternSVG, renderRibMasterSheets } from '../render/svg.js';
+import { renderPatternSVG, renderPatternSheets, renderRibMasterSheets } from '../render/svg.js';
 import { BellowsViewer } from '../render/three.js';
 import { buildControlPanel } from './controls.js';
 import { buildAppShell } from './appShell.js';
 import { mountPreview, buildPreviewToolbar } from './preview.js';
-import { makeSVGBlob, downloadBlob, triggerDownload } from '../export/download.js';
+import { makeSVGBlob, downloadBlob, downloadPatternSheets, triggerDownload } from '../export/download.js';
 import { exportRibsSTL, exportFullRibsSTL } from '../export/stl.js';
 
 const HINTS_KEY = 'bellows.hintsOn';
@@ -142,7 +142,7 @@ export function initApp(rootEl) {
   async function onExport(kind) {
     const model = buildPatternModel(params);
     if (kind === 'svg') {
-      downloadBlob(makeSVGBlob(renderPatternSVG(model, params)), 'bellows-fold-pattern.svg');
+      downloadPatternSheets(renderPatternSheets(model, params));
     } else if (kind === 'svg-ribs') {
       const sheets = renderRibMasterSheets(model, params);
       sheets.forEach((svg, i) =>
