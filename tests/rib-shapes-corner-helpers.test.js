@@ -1,58 +1,74 @@
 import { describe, it, expect } from 'vitest';
-import { cornerPointReach, ribPolygon } from '../src/geometry/ribShapes.js';
+import {
+  cornerPointReach,
+  cornerNotchDepth,
+  CORNER_CLEARANCE,
+  ribPolygon,
+} from '../src/geometry/ribShapes.js';
 
 describe('cornerPointReach (PROVISIONAL 45deg bevel reach)', () => {
   it('is depth/2 (exact 45deg) when depth/2 <= cornerAllowance', () => {
-    // default rib=12 -> depth/2=6 <= ca=15
     expect(cornerPointReach(12, 15)).toBe(6);
   });
-  it('clamps to cornerAllowance so the apex never crosses the corner line (ABUT, not bond)', () => {
-    // depth/2 = 20 > ca=15 -> clamp to 15 (bevel steeper than 45deg, flagged provisional)
+  it('clamps to cornerAllowance so the apex never crosses the corner line', () => {
     expect(cornerPointReach(40, 15)).toBe(15);
   });
 });
 
+describe('cornerNotchDepth (PROVISIONAL clearance gap)', () => {
+  it('is reach + clearance (notch cut deeper than the mating point by the clearance)', () => {
+    expect(cornerNotchDepth(6)).toBeCloseTo(6 + CORNER_CLEARANCE, 6);
+  });
+  it('default clearance is small and non-negative', () => {
+    expect(CORNER_CLEARANCE).toBeGreaterThanOrEqual(0);
+    expect(CORNER_CLEARANCE).toBeLessThanOrEqual(2);
+  });
+  it('accepts an explicit clearance override', () => {
+    expect(cornerNotchDepth(6, 1)).toBe(7);
+  });
+});
+
 describe('ribPolygon', () => {
-  it('clear ends -> the 4-point inset rectangle (unchanged from Phase 1)', () => {
-    const pts = ribPolygon(120, 12, { leftPointed: false, rightPointed: false }, 6);
+  it('flat ends -> the 4-point inset rectangle', () => {
+    const pts = ribPolygon(120, 12, { leftKind: 'flat', rightKind: 'flat' }, 6, 6.5);
     expect(pts).toEqual([
       { x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 12 }, { x: 0, y: 12 },
     ]);
   });
-  it('both ends pointed -> 6 points; symmetric 45deg apexes reach past both inset edges (construction rule)', () => {
-    // PROVISIONAL geometry: assert the CONSTRUCTION RULE, not the exact provisional apex coords.
-    const pts = ribPolygon(120, 12, { leftPointed: true, rightPointed: true }, 6);
+
+  it('point ends -> 6 points; convex apexes reach past BOTH inset edges (construction rule)', () => {
+    const pts = ribPolygon(120, 12, { leftKind: 'point', rightKind: 'point' }, 6, 6.5);
     expect(pts.length).toBe(6);
     const right = pts.find((p) => p.x > 120);
     const left = pts.find((p) => p.x < 0);
-    expect(right).toBeTruthy();
-    expect(left).toBeTruthy();
-    expect(right.x).toBeGreaterThan(120);      // reaches toward the right corner
-    expect(right.x - 120).toBe(12 / 2);        // 45deg: x-reach === depth/2
-    expect(right.y).toBe(12 / 2);              // apex on the rib y-midline
-    expect(left.x).toBeLessThan(0);            // reaches toward the left corner
-    expect(left.x).toBeCloseTo(-6, 6);         // symmetric: -reach = -(depth/2)
-    expect(left.y).toBeCloseTo(6, 6);          // apex on the rib y-midline
+    expect(right.x - 120).toBe(6); // reach past the right edge
+    expect(right.y).toBe(6);       // apex on the y-midline
+    expect(left.x).toBe(-6);       // reach past the left edge
+    expect(left.y).toBe(6);
   });
-  it('clamps the apex to the corner line (ABUT, not cross) when depth/2 exceeds cornerAllowance', () => {
-    // width=120, depth=40, cornerAllowance=15: depth/2=20 > ca=15, so reach clamps to 15
-    const reach = cornerPointReach(40, 15);
-    expect(reach).toBe(15);                                        // clamp engaged
-    const pts = ribPolygon(120, 40, { leftPointed: true, rightPointed: true }, reach);
-    const right = pts.find((p) => p.x > 120);
-    const left = pts.find((p) => p.x < 0);
-    // Right apex ABUTs the corner line at x=120+15=135, NOT x=120+20=140 (would cross)
-    expect(right.x).toBeCloseTo(120 + 15, 6);  // 135: abuts corner line
-    expect(right.x).not.toBeCloseTo(140, 1);   // 140 = width+depth/2: would cross corner line
-    expect(right.y).toBeCloseTo(20, 6);        // depth/2
-    // Left apex symmetric
-    expect(left.x).toBeCloseTo(-15, 6);        // -reach (clamped), not -20
-    expect(left.y).toBeCloseTo(20, 6);         // depth/2
+
+  it('notch ends -> 6 points; concave reflex vertices set BACK into the rib by notchDepth', () => {
+    const pts = ribPolygon(120, 12, { leftKind: 'notch', rightKind: 'notch' }, 6, 6.5);
+    expect(pts.length).toBe(6);
+    const rightReflex = pts.find((p) => p.x > 60 && p.x < 120);
+    const leftReflex = pts.find((p) => p.x > 0 && p.x < 60);
+    expect(rightReflex).toBeTruthy();
+    expect(leftReflex).toBeTruthy();
+    expect(120 - rightReflex.x).toBe(6.5); // set back by notchDepth from the right edge
+    expect(rightReflex.y).toBe(6);
+    expect(leftReflex.x).toBe(6.5);        // set back by notchDepth from the left edge
+    expect(leftReflex.y).toBe(6);
+    // exact simple-polygon vertex order (concave hexagon, no self-intersection)
+    expect(pts).toEqual([
+      { x: 0, y: 0 }, { x: 120, y: 0 }, { x: 113.5, y: 6 },
+      { x: 120, y: 12 }, { x: 0, y: 12 }, { x: 6.5, y: 6 },
+    ]);
   });
-  it('only the right end pointed -> 5 points; left edge stays flat', () => {
-    const pts = ribPolygon(120, 12, { leftPointed: false, rightPointed: true }, 6);
-    expect(pts.length).toBe(5);
-    expect(pts.some((p) => p.x < 0)).toBe(false);
-    expect(pts.some((p) => p.x > 120)).toBe(true);
+
+  it('mixed ends -> point on the right, notch on the left (both non-flat => 6 points)', () => {
+    const pts = ribPolygon(120, 12, { leftKind: 'notch', rightKind: 'point' }, 6, 6.5);
+    expect(pts.length).toBe(6);
+    expect(pts.some((p) => p.x > 120)).toBe(true);                          // right point
+    expect(pts.some((p) => p.x > 0 && p.x < 120 && p.y === 6)).toBe(true);  // left reflex
   });
 });
