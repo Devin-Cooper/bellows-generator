@@ -192,14 +192,23 @@ export function renderRibLadderSVG(model, params) {
   const hRibs = faceColumnRibs(shapes, 'H');
   const ribCount = wRibs.length;
 
-  const sameWidths =
+  // Interlock makes a square's W and H columns EQUAL width but COMPLEMENTARY shape (W wide at
+  // even ribIndex, H wide at odd), so a width-only dedupe would merge them into 4 identical WIDE
+  // strips — the ring could never interlock, and it would disagree with the STL, which keeps the
+  // families separate. Dedupe on SHAPE instead: compare the full rib-local polygons. Clear-mode
+  // squares still merge (identical rectangles); interlock squares keep two complementary columns;
+  // rectangular never merges (widths, hence points, differ).
+  const samePoints = (a, b) =>
+    a.length === b.length &&
+    a.every((p, i) => Math.abs(p.x - b[i].x) < 1e-9 && Math.abs(p.y - b[i].y) < 1e-9);
+  const sameShape =
     wRibs.length === hRibs.length &&
-    wRibs.every((r, i) => Math.abs(r.width - hRibs[i].width) < 1e-9);
+    wRibs.every((r, i) => samePoints(r.points, hRibs[i].points));
   // Quantity = number of WALLS a ladder column represents. A normal (un-merged) W or H
   // column is 2 identical walls (x2). When W and H dedupe into one merged square column
   // it stands in for all 4 walls of the ring (x4) — else the sheet would specify only 2
   // strips for a 4-wall square tube.
-  const columns = sameWidths
+  const columns = sameShape
     ? [{ face: 'W', label: 'W/H', ribs: wRibs, qty: 4 }]
     : [
         { face: 'W', label: 'W', ribs: wRibs, qty: 2 },
