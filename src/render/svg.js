@@ -144,8 +144,10 @@ function faceColumnRibs(shapes, face) {
  * bottom band edge (y=depth) — a clear rectangle (straight rails) OR an interlock TRAPEZOID (a
  * single diagonal per rib end, its point on a band edge). The tracer reads the left/right x at
  * each band edge and stitches them into ONE connected loop: down the left side rib-by-rib, then
- * up the right side. Outer grown OUTWARD by kerf/2; one middle connector-tab notch per gap shrunk
- * INWARD on the clear width, clamped to the narrower adjacent rib so the snap-apart tabs survive.
+ * up the right side. Outer grown OUTWARD by kerf/2; one middle connector-tab notch per gap, its
+ * left/right edges FLOORED/CAPPED to the clear width [0, width] (then inset by tabW), so the
+ * snap-apart tabs always land on the CLEAR edge — never on an OUTWARD interlock point tip
+ * (x=-reach / x=width+reach) nor outside the material, and the inward-gap setback still leaves a tab.
  */
 function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
@@ -185,15 +187,18 @@ function traceColumn(ribs, colX0, datum, params) {
   const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
   for (let i = 0; i < N - 1; i++) {
-    // Actual outer polygon left/right boundary at the gap between rib i (bottom) and rib i+1 (top).
-    // For a clear rib: leftEdge=0, rightEdge=width (same as the old formula).
-    // For an interlock inward gap (leading bottom / rear top): leftEdge=setback, rightEdge=width-setback.
-    // For an interlock outward gap (rear bottom / leading top): leftEdge=-reach, rightEdge=width+reach.
-    // The tab notch must sit tabW mm INSIDE the actual outer boundary on both sides — using the bare
-    // clear-width origin (colX0+0 / colX0+width) causes the notch to exceed available material at
-    // inward-gap transitions where setback > tabW, leaving zero connector tab.
-    const leftEdge = Math.max(rows[i].leftBot, rows[i + 1].leftTop);
-    const rightEdge = Math.min(rows[i].rightBot, rows[i + 1].rightTop);
+    // Left/right boundary of the tab notch at the gap between rib i (bottom) and rib i+1 (top),
+    // FLOORED/CAPPED to the clear width [0, clearW] and then max'd/min'd with the adjacent rib edges.
+    //   Clear rib:                        leftEdge=0,       rightEdge=clearW.
+    //   Interlock INWARD gap  (leading bottom / rear top): leftEdge=setback, rightEdge=clearW-setback
+    //     — the max(0,..)/min(clearW,..) keeps the setback so a deep setback still leaves a tab.
+    //   Interlock OUTWARD gap (rear bottom / leading top): both adjacent edges are the WIDE base
+    //     (-reach / clearW+reach = the POINT TIPS). Flooring at the RAW outer boundary would put the
+    //     tab at x≈-reach / x≈clearW+reach — ON the interlock point, `reach` mm outside the clear
+    //     width. The [0, clearW] floor/cap pins those tabs onto the clear edge, off the point.
+    const clearW = Math.min(rows[i].width, rows[i + 1].width);
+    const leftEdge = Math.max(0, rows[i].leftBot, rows[i + 1].leftTop);
+    const rightEdge = Math.min(clearW, rows[i].rightBot, rows[i + 1].rightTop);
     const nl = colX0 + leftEdge + tabW;
     const nr = colX0 + rightEdge - tabW;
     if (nr <= nl) continue;

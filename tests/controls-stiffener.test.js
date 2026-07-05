@@ -57,5 +57,24 @@ describe('control panel — stiffener params', () => {
     // trapezoids whose reach/setback add distinct x-values (>2) — same 4 vertices, new shape.
     expect(clear.every((s) => s.points.length === 4 && distinctXs(s) === 2)).toBe(true);
     expect(interlock.some((s) => distinctXs(s) > 2)).toBe(true);
+
+    // HARDEN: `distinctXs>2` ALSO held for the deleted concave-notch hexagon (6 vertices, apex at
+    // depth/2). Pin every interlock trapezoid footprint: exactly 4 vertices, no mid-depth vertex,
+    // and the reach APEX (global min/max x) sits ON a BAND EDGE (the footprint's yMin/yMax fold lines).
+    const traps = interlock.filter((s) => distinctXs(s) > 2);
+    expect(traps.length).toBeGreaterThan(0);
+    for (const s of traps) {
+      const ys = s.points.map((p) => p.y);
+      const xs = s.points.map((p) => p.x);
+      const yMin = Math.min(...ys), yMax = Math.max(...ys), yMid = (yMin + yMax) / 2;
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      expect(s.points.length).toBe(4);                                       // trapezoid, not a 6-pt hexagon
+      expect(s.points.some((p) => Math.abs(p.y - yMid) < 1e-6)).toBe(false); // no mid-depth apex/notch vertex
+      for (const p of s.points) {
+        if (Math.abs(p.x - xMin) < 1e-6 || Math.abs(p.x - xMax) < 1e-6) {
+          expect(Math.min(Math.abs(p.y - yMin), Math.abs(p.y - yMax))).toBeLessThan(1e-6); // apex ON a band edge
+        }
+      }
+    }
   });
 });

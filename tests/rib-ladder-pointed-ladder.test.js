@@ -57,10 +57,41 @@ function mode(values) {
   return best;
 }
 
+// Fold-line band edges (each rib's y=0/depth at the shared datum) and the rib mid-heights. The
+// CORRECTED interlock apex sits ON a band edge; the deleted concave-notch hexagon put its apex at
+// the rib MID-HEIGHT — so pinning apex/vertex y to a band edge (never a mid-band) catches that.
+function foldLines({ params, metrics }) {
+  const datum = params.endMargin;
+  const bandEdges = [];
+  const midBands = [];
+  for (let r = 0; r < metrics.ribCount; r++) {
+    const yTop = datum + r * metrics.pitch;
+    bandEdges.push(yTop, yTop + params.rib);
+    midBands.push(yTop + params.rib / 2);
+  }
+  return { bandEdges, midBands };
+}
+const distTo = (y, ys) => Math.min(...ys.map((e) => Math.abs(y - e)));
+
 describe('renderRibLadderSVG — interlock trapezoid rail routing (point OUT, setback IN)', () => {
   it('(a) interlock ribs project a point OUTWARD past a rail and set the cut-off edge IN', () => {
     const il = ladder({ cornerMode: 'interlock' });
     const pts = outerPoints(ladderPaths(il.svg, 'W')[0].d);
+
+    // HARDEN (band-edge apex): the deleted concave-notch hexagon ALSO satisfied "point OUT /
+    // setback IN", but placed its apex at the rib MID-HEIGHT. Pin every OUTWARD reach jut onto a
+    // FOLD-LINE band edge (y≈0/depth), never mid-depth — clear rails come from the qty/spine marks.
+    const colX0a = Number(/<text data-role="qty" data-face="W"[^>]*\bx="([-\d.]+)"/.exec(il.svg)[1]);
+    const spineCxa = Number(/<line data-role="spine" data-face="W"[^>]*\bx1="([-\d.]+)"/.exec(il.svg)[1]);
+    const clearWa = 2 * (spineCxa - colX0a);
+    const fl = foldLines(il);
+    const juts = pts.filter((p) => p.x < colX0a - 0.5 || p.x > colX0a + clearWa + 0.5);
+    expect(juts.length).toBeGreaterThan(0); // the interlock point actually projects OUT past a rail
+    for (const p of juts) {
+      expect(distTo(p.y, fl.bandEdges)).toBeLessThan(0.3);                       // apex ON a fold line
+      expect(distTo(p.y, fl.midBands)).toBeGreaterThan(il.params.rib / 2 - 0.5); // NOT the rib mid-height
+    }
+
     const xs = pts.map((p) => p.x);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2; // column centre
     const leftXs = xs.filter((x) => x < cx);
@@ -89,11 +120,21 @@ describe('renderRibLadderSVG — interlock trapezoid rail routing (point OUT, se
     const d = ladderPaths(il.svg, 'W')[0].d;
     // outer + (ribCount-1) middle connector-tab notches = ribCount subpaths
     expect((d.match(/M /g) || []).length).toBe(il.metrics.ribCount);
+    // HARDEN: the trace is stitched purely from band edges — EVERY outer vertex sits on a fold line,
+    // never at a rib mid-height (where the deleted concave-notch hexagon put its apex).
+    const midBands = foldLines(il).midBands;
+    for (const p of outerPoints(d)) {
+      expect(distTo(p.y, midBands)).toBeGreaterThan(il.params.rib / 2 - 0.5);
+    }
   });
 
   it('(c) clear mode: straight rails — no projecting point, no inward setback', () => {
     const clr = ladder({ cornerMode: 'clear' });
-    const xs = outerPoints(ladderPaths(clr.svg, 'W')[0].d).map((p) => p.x);
+    const cpts = outerPoints(ladderPaths(clr.svg, 'W')[0].d);
+    // HARDEN: clear rails also lie on fold-line band edges — no vertex at a rib mid-height.
+    const midBands = foldLines(clr).midBands;
+    for (const p of cpts) expect(distTo(p.y, midBands)).toBeGreaterThan(clr.params.rib / 2 - 0.5);
+    const xs = cpts.map((p) => p.x);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
     const leftXs = xs.filter((x) => x < cx);
     const rightXs = xs.filter((x) => x > cx);
@@ -147,5 +188,52 @@ describe('renderRibLadderSVG — interlock trapezoid rail routing (point OUT, se
       expect(notchMinX).toBeGreaterThan(outer.minX + eps);  // left tab material > 0
       expect(notchMaxX).toBeLessThan(outer.maxX - eps);     // right tab material > 0
     }
+  });
+
+  it('(e) FIX1: connector-tab notches never land ON the interlock point — every notch x stays within the clear width [0, width]', () => {
+    // DEFAULT interlock: frontW=160, cornerAllowance=15 → width=130, reach=setback=6, tabW=2, kerf=0.15.
+    // At an OUTWARD interlock gap (rear bottom / leading top) BOTH adjacent rib edges are the WIDE
+    // base (-reach / width+reach = the POINT TIPS). Flooring the notch at the RAW outer boundary
+    // relocated the snap-apart tab to x≈-reach / x≈width+reach — ON the interlock point, 6 mm outside
+    // the clear width. The fix floors/caps the notch at the clear width [0, width] so the break scar
+    // lands on the clear edge, off the point. (Half of all gaps are outward, so half were affected.)
+    const il = ladder({ cornerMode: 'interlock' });
+    const { kerf } = il.params;
+    const tabW = Math.max(1, Math.min(2, il.params.cornerAllowance)); // 2 at defaults
+
+    // Clear-width origin (colX0) from the qty label; column centre from the spine → the clear width.
+    const colX0 = Number(/<text data-role="qty" data-face="W"[^>]*\bx="([-\d.]+)"/.exec(il.svg)[1]);
+    const spineCx = Number(/<line data-role="spine" data-face="W"[^>]*\bx1="([-\d.]+)"/.exec(il.svg)[1]);
+    const width = 2 * (spineCx - colX0);
+
+    const d = ladderPaths(il.svg, 'W')[0].d;
+    const subs = d.split('Z').map((s) => s.trim()).filter(Boolean);
+    const parse = (s) => {
+      const nums = s.match(/-?[\d.]+/g).map(Number);
+      const pts = [];
+      for (let i = 0; i < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+      return pts;
+    };
+    const notches = subs.slice(1).map(parse); // subs[0] = outer boundary; the rest are tab notches
+    expect(notches.length).toBeGreaterThan(0);
+
+    const eps = 1e-6;
+    const relLs = [];
+    const relRs = [];
+    for (const n of notches) {
+      const relL = Math.min(...n.map((p) => p.x)) - colX0; // notch left edge, column-relative
+      const relR = Math.max(...n.map((p) => p.x)) - colX0; // notch right edge, column-relative
+      relLs.push(relL);
+      relRs.push(relR);
+      // EVERY notch edge lies within the clear width [0, width] — never at x≈-reach or x≈width+reach.
+      expect(relL).toBeGreaterThanOrEqual(0 - eps);
+      expect(relR).toBeLessThanOrEqual(width + eps);
+    }
+    // The OUTWARD-gap notches are capped to the clear rail, so the tab lands on the clear edge:
+    // left edge in [0, tabW+kerf], right edge in [width-tabW-kerf, width] (never on the point tip).
+    expect(Math.min(...relLs)).toBeGreaterThanOrEqual(0 - eps);
+    expect(Math.min(...relLs)).toBeLessThanOrEqual(tabW + kerf);
+    expect(Math.max(...relRs)).toBeGreaterThanOrEqual(width - tabW - kerf);
+    expect(Math.max(...relRs)).toBeLessThanOrEqual(width + eps);
   });
 });
