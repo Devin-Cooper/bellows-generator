@@ -105,9 +105,12 @@ function faceColumnRibs(shapes, face) {
 /**
  * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
  * Ribs are left-aligned (straight left rail); the outer boundary follows each rib's own
- * right edge with a tab jog across every gap, giving a per-pleat trapezoid for tapered
- * bellows (P3). Outer grown OUTWARD by kerf/2; one middle notch per gap shrunk INWARD,
- * clamped to the narrower adjacent rib so the connector tabs survive the width step.
+ * edges. In interlock mode a rib carries a corner end-vertex on its y-midline: a WIDE rib
+ * POINTS outward (left x=-reach, right x=width+reach) and a NARROW rib is NOTCHED inward
+ * (left x=+notchDepth, right x=width-notchDepth). Each rail is dented to follow that vertex
+ * on BOTH ends (out for a point, in for a notch); clear ribs have no such vertex and keep a
+ * straight rail. A tab jog crosses every gap. Outer grown OUTWARD by kerf/2; one middle
+ * notch per gap shrunk INWARD, clamped to the narrower adjacent rib so connector tabs survive.
  */
 function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
@@ -116,36 +119,34 @@ function traceColumn(ribs, colX0, datum, params) {
   // floor at 1mm so the lattice never severs, even at cornerAllowance=0 (guards the original P0)
   const tabW = Math.max(1, Math.min(2, params.cornerAllowance));
   const N = ribs.length;
+  const midY = rib / 2; // the corner point / notch vertex sits on the rib's y-midline
 
   const rows = ribs.map((s, r) => {
     const yTop = datum + r * pit;
     return { xL: colX0, xR: colX0 + s.width, yTop, yBot: yTop + rib, shape: s };
   });
 
-  // Down the LEFT side following each rib edge (+ left-apex jog for pointed/alternating),
-  // then up the RIGHT side following each rib edge (+ right-apex jog) + tab jogs. Between
-  // ribs the left boundary stays at colX0 (next iteration's yTop continues the rail), so
-  // clear mode (no apex) yields the same straight left rail as before — no redundant push.
+  // Corner end-vertex = the polygon vertex on the rib's y-midline. Its x carries its own sign
+  // relative to the rail, so the SAME arithmetic dents OUT for a wide point and IN for a
+  // narrow notch. Split by width/2 to pick the left- vs right-rail vertex; clear ribs have
+  // none (find -> undefined -> straight rail, byte-identical to before).
+  const isEnd = (p) => Math.abs(p.y - midY) < 1e-6;
+  const leftEnd = (s) => s.points.find((p) => isEnd(p) && p.x < s.width / 2);
+  const rightEnd = (s) => s.points.find((p) => isEnd(p) && p.x > s.width / 2);
+
   const outer = [];
   for (let r = 0; r < N; r++) {
     const s = rows[r].shape;
-    const leftApex = s.points.find((p) => p.x < 0); // pointed/alternating outer apex (x < 0)
+    const le = leftEnd(s); // le.x: -reach juts OUT (x<0), +notchDepth dents IN (0<x<width/2)
     outer.push({ x: rows[r].xL, y: rows[r].yTop });
-    if (leftApex) {
-      // left rail follows the canonical polygon out to the 45deg apex on the y-midline
-      // (leftApex.x is negative → colX0 - reach, the outward protrusion toward the corner)
-      outer.push({ x: rows[r].xL + leftApex.x, y: rows[r].yTop + rib / 2 });
-    }
+    if (le) outer.push({ x: rows[r].xL + le.x, y: rows[r].yTop + midY });
     outer.push({ x: rows[r].xL, y: rows[r].yBot });
   }
   for (let r = N - 1; r >= 0; r--) {
     const s = rows[r].shape;
-    const rightApex = s.points.find((p) => p.x > s.width); // pointed/alternating outer apex
+    const re = rightEnd(s); // (re.x - width): +reach juts OUT, -notchDepth dents IN
     outer.push({ x: rows[r].xR, y: rows[r].yBot });
-    if (rightApex) {
-      // right rail follows the canonical polygon out to the 45deg apex on the y-midline
-      outer.push({ x: rows[r].xR + (rightApex.x - s.width), y: rows[r].yTop + rib / 2 });
-    }
+    if (re) outer.push({ x: rows[r].xR + (re.x - s.width), y: rows[r].yTop + midY });
     outer.push({ x: rows[r].xR, y: rows[r].yTop });
     if (r > 0) outer.push({ x: rows[r - 1].xR, y: rows[r].yTop }); // tab jog to next rib width
   }
