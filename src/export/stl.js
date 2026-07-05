@@ -131,6 +131,70 @@ export function computeRibOutlines(model, params) {
 }
 
 /**
+ * Ear-clipping triangulation of a SIMPLE polygon (convex OR concave). Returns triangles as
+ * index triples into `points`, exactly points.length-2 of them, each wound CCW (positive
+ * signed area in the xy-plane) regardless of the input winding. Unlike a vertex-0 fan this
+ * never spans a reflex/notch void, so an interlock narrow rib's setback stays EMPTY (the
+ * cap is manifold and a mating point can seat). Adequate for the small rib polygons here
+ * (<= a few vertices); not a general-purpose robust triangulator.
+ * @param {{x:number,y:number}[]} points
+ * @returns {[number,number,number][]}
+ */
+export function earClip(points) {
+  const n = points.length;
+  if (n < 3) return [];
+  const area2 = (a, b, c) =>
+    (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y); // 2x signed area; > 0 === CCW
+  const inTri = (p, a, b, c) => {
+    const d1 = area2(a, b, p);
+    const d2 = area2(b, c, p);
+    const d3 = area2(c, a, p);
+    const neg = d1 < 0 || d2 < 0 || d3 < 0;
+    const pos = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(neg && pos); // inside or on the boundary of the CCW triangle
+  };
+  // signed area of the whole ring; reverse the working index list to force a CCW traversal
+  // so a convex ear is exactly a vertex with area2 > 0.
+  let ring = 0;
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % n];
+    ring += p.x * q.y - q.x * p.y;
+  }
+  const idx = [...Array(n).keys()];
+  if (ring < 0) idx.reverse();
+
+  const tris = [];
+  let guard = n * n; // hard stop: never spin on malformed geometry
+  while (idx.length > 3 && guard-- > 0) {
+    let clipped = false;
+    for (let i = 0; i < idx.length; i++) {
+      const ia = idx[(i - 1 + idx.length) % idx.length];
+      const ib = idx[i];
+      const ic = idx[(i + 1) % idx.length];
+      const a = points[ia];
+      const b = points[ib];
+      const c = points[ic];
+      if (area2(a, b, c) <= 0) continue; // reflex/collinear vertex — not a convex ear
+      let empty = true;
+      for (let j = 0; j < idx.length; j++) {
+        const iv = idx[j];
+        if (iv === ia || iv === ib || iv === ic) continue;
+        if (inTri(points[iv], a, b, c)) { empty = false; break; }
+      }
+      if (!empty) continue; // another vertex lies inside — not an ear
+      tris.push([ia, ib, ic]);
+      idx.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break; // safety: bail rather than loop forever
+  }
+  if (idx.length === 3) tris.push([idx[0], idx[1], idx[2]]);
+  return tris;
+}
+
+/**
  * Binary STL of the rib solids. Each solid is a prism: its base polygon (V vertices)
  * extruded z0..z1 -> (V-2) top + (V-2) bottom + 2V side triangles = 4V-4. The header
  * count is therefore SHAPE-AWARE (clear rectangles -> 12; pointed bevels add triangles),
@@ -163,9 +227,14 @@ export function exportRibsSTL(model, params) {
     const n = P.length;
     const bot = (i) => [P[i].x, P[i].y, s.z0];
     const top = (i) => [P[i].x, P[i].y, s.z1];
-    for (let i = 1; i < n - 1; i++) tri(bot(0), bot(i + 1), bot(i)); // bottom fan
-    for (let i = 1; i < n - 1; i++) tri(top(0), top(i), top(i + 1)); // top fan
-    for (let i = 0; i < n; i++) {                                    // side walls
+    // Concavity-safe caps: ear-clip the (possibly notched) base polygon so an interlock
+    // notch void is left EMPTY. A vertex-0 fan would span that void -> non-manifold. Count is
+    // n-2 per cap, so the 4V-4 header math is unchanged. earClip returns CCW triples: use
+    // them directly for the top (+z outward) and reversed for the bottom (-z outward).
+    const cap = earClip(P);
+    for (const [a, b, c] of cap) tri(bot(a), bot(c), bot(b)); // bottom cap, -z outward
+    for (const [a, b, c] of cap) tri(top(a), top(b), top(c)); // top cap,    +z outward
+    for (let i = 0; i < n; i++) {                             // side walls (unchanged)
       const j = (i + 1) % n;
       tri(bot(i), bot(j), top(j));
       tri(bot(i), top(j), top(i));
