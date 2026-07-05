@@ -171,4 +171,32 @@ describe('computeRibShapes interlock — tapered asymmetry + small-face guard', 
       }
     }
   });
+
+  it('tiny-face NON-degeneracy: short-edge vertices stay DISTINCT (setback < width/2 strictly, no duplicate vertex)', () => {
+    // TINY: frontW=frontH=40, ca=15 -> width=10; depth=rib=12 -> natural setback=min(ca,depth/2)=6.
+    // Clamping setback to EXACTLY width/2 (=5) collapses {setback,y} and {width-setback,y} into ONE
+    // point -> a duplicate-vertex trapezoid whose STL cap triangle is zero-area. A strict cap keeps
+    // the two short-edge vertices distinct so caps stay non-degenerate.
+    const shapes = computeRibShapes({ ...TINY, cornerMode: 'interlock' });
+    expect(shapes.length).toBeGreaterThan(0);
+    // Every TINY interlock rib clamps (width/2=5 < natural setback=6), so this catches the degeneracy.
+    let clamped = 0;
+    for (const s of shapes) {
+      const { setback } = reachSetbackOf(s);
+      // The two SHORT-EDGE (setback) vertices are the two that sit inside [0,width]; the wide-base
+      // apexes project OUT to x<0 and x>width. They must be strictly distinct.
+      const inner = s.points.filter((p) => p.x > -1e-9 && p.x < s.width + 1e-9);
+      expect(inner.length).toBe(2);                                  // exactly the two short-edge verts
+      const [lo, hi] = inner.map((p) => p.x).sort((a, b) => a - b);
+      expect(hi - lo).toBeGreaterThan(0);                            // short-edge vertices DISTINCT
+      // width - setback > setback strictly (setback strictly under width/2)
+      expect(s.width - setback).toBeGreaterThan(setback);
+      expect(setback).toBeLessThan(s.width / 2);
+      // The 4 polygon vertices are all distinct (no coincident duplicate -> non-degenerate STL cap).
+      const uniq = new Set(s.points.map((p) => `${Math.round(p.x * 1e6)},${Math.round(p.y * 1e6)}`));
+      expect(uniq.size).toBe(4);
+      if (setback < 6 - 1e-9) clamped++;                             // clamp actually engaged
+    }
+    expect(clamped).toBe(shapes.length); // every tiny-face rib was in the clamp regime
+  });
 });

@@ -1,5 +1,5 @@
 // tests/rib-ladder-master-sheet.test.js
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderRibMasterSheets, renderRibLadderSVG } from '../src/render/svg.js';
 import { computeMetrics } from '../src/geometry/metrics.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
@@ -122,6 +122,35 @@ describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
         expect(b.maxX).toBeLessThanOrEqual(w + 1e-6);
       }
     }
+  });
+});
+
+describe('renderRibMasterSheets — too-wide rib wall warning (uncuttable sheet)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('warns when a rib wall is wider than the usable bed width (rib cannot be split across its width)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Narrow bed: usableW = bedW - 2*5 = 90mm; a default wall's clear width is 120mm > 90mm.
+    const { model, params } = ctx({ bedW: 100 });
+    const usableW = params.bedW - 2 * 5;
+    renderRibMasterSheets(model, params);
+    const overflowWarns = warn.mock.calls
+      .map((c) => String(c[0]))
+      .filter((m) => /exceeds usable bed width/.test(m));
+    expect(overflowWarns.length).toBeGreaterThan(0);
+    // Names the wall (face+index) and reports the numeric overflow against the usable width.
+    expect(overflowWarns.some((m) => /\b[WH]\d\b/.test(m))).toBe(true);
+    expect(overflowWarns.some((m) => m.includes(usableW.toFixed(1)))).toBe(true);
+  });
+
+  it('does NOT warn at default params (every wall fits the bed width)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { model, params } = ctx();
+    renderRibMasterSheets(model, params);
+    const overflowWarns = warn.mock.calls
+      .map((c) => String(c[0]))
+      .filter((m) => /exceeds usable bed width/.test(m));
+    expect(overflowWarns.length).toBe(0);
   });
 });
 

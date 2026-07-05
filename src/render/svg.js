@@ -330,6 +330,16 @@ export function packRibSheets(walls, params) {
     const rightPad = Math.max(0, ...ribs.map((r) => Math.max(...r.points.map((p) => p.x)) - r.width));
     const contentW = kerf + leftPad + widthMax + rightPad;
 
+    // A rib cannot be split across its WIDTH (only its height is bed-wrapped), so a wall wider than
+    // the usable bed width overruns the sheet unavoidably. Warn (once per wall) but still emit the
+    // sheet — the geometry is correct, only the chosen bed is too narrow to cut it in one piece.
+    if (contentW > usableW) {
+      console.warn(
+        `Rib wall ${wall.face}${wall.wallIndex} width ${contentW.toFixed(1)}mm exceeds ` +
+          `usable bed width ${usableW.toFixed(1)}mm; increase bedW or reduce the opening`
+      );
+    }
+
     let segStart = 0;
     let segIndex = 0;
     while (segStart < ribs.length) {

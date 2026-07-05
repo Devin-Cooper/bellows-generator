@@ -27,6 +27,13 @@ const WALL_FACES = ['W', 'H', 'W', 'H'];
 // then the geometry is construction-correct but the clearance is dimension-provisional.
 export const CORNER_CLEARANCE = 0.5;
 
+// Minimum gap (mm) kept between the setback cap and width/2. Clamping setback to EXACTLY width/2
+// coincides the two short-edge vertices ({setback,y} and {width-setback,y}) into a single point,
+// yielding a degenerate duplicate-vertex trapezoid whose STL cap triangles have zero area (hits
+// sub-~43mm interlock faces). Capping strictly below width/2 keeps width-setback > setback, so the
+// short cut-off edge — and its STL cap — stays non-degenerate.
+export const SETBACK_MIN_GAP = 1e-3;
+
 /**
  * Canonical per-(wall, rib) rib shapes — the SINGLE source of rib-shape truth.
  * One entry per (wall, ribIndex): four walls per ring (two 'W', two 'H').
@@ -80,7 +87,10 @@ export function computeRibShapes(params) {
       // corner-fold gap (reach <= cornerAllowance) and the short cut-off edge stays non-negative
       // (width >= 2*setback), both non-negative.
       reach = Math.max(0, Math.min(reach, ca));
-      setback = Math.max(0, Math.min(setback, width / 2));
+      // Cap strictly BELOW width/2 (not at it): a setback of exactly width/2 coincides the two
+      // short-edge vertices into a duplicate-vertex (zero-area-cap) trapezoid. Normal faces
+      // (width >> 2*setback) keep the clamp inactive and are unchanged.
+      setback = Math.max(0, Math.min(setback, width / 2 - SETBACK_MIN_GAP));
       const ends = cornerModeEnds(params.cornerMode ?? 'clear', wallIndex, ribIndex);
       const points = ribPolygon(width, depth, ends, reach, setback);
       shapes.push({
