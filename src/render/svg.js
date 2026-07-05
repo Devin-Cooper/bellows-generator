@@ -71,25 +71,60 @@ export function renderPatternSVG(model, params) {
 }
 
 /**
- * Offset an axis-aligned polygon relative to its own bbox centre.
- * delta > 0 grows OUTWARD (laser kerf on an outer cut), delta < 0 shrinks INWARD
- * (kerf on an interior notch). No clipping library needed.
- *
- * KNOWN LIMITATION (accepted, within +-0.3mm target): on tapered columns this
- * bbox-centre offset pushes ribs narrower than half the widest rib inward by
- * ~1 kerf (~0.15mm undersize). Straight/rectangular columns are exact. Tapered
- * is experimental; revisit with a per-edge normal offset if tapered precision
- * is tightened.
+ * Per-edge OUTWARD-NORMAL polygon offset (replaces the old bbox-centre radial offset).
+ * Each vertex slides along the MITER of its two adjacent edges' outward normals, so the offset
+ * is correct for convex apex vertices (a wide interlock rib's 45deg point) AND concave reflex
+ * vertices (a narrow rib's notch). The bbox-radial approach put a ZERO offset on the bbox
+ * centre-line (tilting the middle rib's bevel) and the WRONG sign at a reflex vertex.
+ *   delta > 0 grows OUTWARD (laser kerf on an outer cut); delta < 0 shrinks INWARD (kerf on an
+ *   interior notch). "Outward" is derived from the polygon's own signed-area winding, so both the
+ *   outer boundary and the notch rectangles offset in the right direction regardless of trace
+ *   order. Axis-aligned right-angle corners move by exactly (+-delta, +-delta) — geometrically
+ *   identical to the former offsetFromCentre for clear (rectangular) columns.
+ * @param {{x:number,y:number}[]} points  simple polygon, no repeated closing vertex
+ * @param {number} delta  signed offset distance (mm)
+ * @returns {{x:number,y:number}[]}
  */
-function offsetFromCentre(points, delta) {
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  return points.map((p) => ({
-    x: p.x < cx ? p.x - delta : p.x > cx ? p.x + delta : p.x,
-    y: p.y < cy ? p.y - delta : p.y > cy ? p.y + delta : p.y,
-  }));
+export function offsetEdges(points, delta) {
+  const n = points.length;
+  if (n < 3) return points.map((p) => ({ ...p }));
+  let area2 = 0;
+  for (let i = 0; i < n; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  // Outward normal of an edge with direction (dx,dy): (dy,-dx) for a positively-wound loop,
+  // (-dy,dx) otherwise. This makes the normal point away from the enclosed interior either way.
+  const pos = area2 > 0;
+  const outN = (dx, dy) => (pos ? { x: dy, y: -dx } : { x: -dy, y: dx });
+  const unit = (dx, dy) => {
+    const L = Math.hypot(dx, dy) || 1;
+    return { x: dx / L, y: dy / L };
+  };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const prev = points[(i - 1 + n) % n];
+    const cur = points[i];
+    const next = points[(i + 1) % n];
+    const d1 = unit(cur.x - prev.x, cur.y - prev.y); // incoming edge direction
+    const d2 = unit(next.x - cur.x, next.y - cur.y); // outgoing edge direction
+    const n1 = outN(d1.x, d1.y);
+    const n2 = outN(d2.x, d2.y);
+    let mx = n1.x + n2.x;
+    let my = n1.y + n2.y;
+    const ml = Math.hypot(mx, my);
+    if (ml < 1e-9) {
+      mx = n1.x; my = n1.y; // 180deg reversal (degenerate spike) — fall back to one normal
+    } else {
+      mx /= ml; my /= ml;
+    }
+    // miter length = 1/cos(half-angle); cos = miter . edgeNormal. Guards a perpendicular flip.
+    const cos = mx * n1.x + my * n1.y;
+    const scale = Math.abs(cos) < 1e-6 ? 1 : 1 / cos;
+    out.push({ x: cur.x + delta * mx * scale, y: cur.y + delta * my * scale });
+  }
+  return out;
 }
 
 /** Ribs of one representative wall of a face, sorted rear->front by ribIndex. */
@@ -148,9 +183,11 @@ function traceColumn(ribs, colX0, datum, params) {
     outer.push({ x: rows[r].xR, y: rows[r].yBot });
     if (re) outer.push({ x: rows[r].xR + (re.x - s.width), y: rows[r].yTop + midY });
     outer.push({ x: rows[r].xR, y: rows[r].yTop });
-    if (r > 0) outer.push({ x: rows[r - 1].xR, y: rows[r].yTop }); // tab jog to next rib width
+    // tab jog only across a REAL width step; on a straight column rows[r-1].xR === rows[r].xR,
+    // so the old unconditional push duplicated the just-emitted (xR,yTop) as a zero-length edge.
+    if (r > 0 && rows[r - 1].xR !== rows[r].xR) outer.push({ x: rows[r - 1].xR, y: rows[r].yTop });
   }
-  const subs = [pathData(offsetFromCentre(outer, half), true)]; // Z closes the top edge
+  const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
   for (let i = 0; i < N - 1; i++) {
     const nl = colX0 + tabW;
@@ -162,7 +199,7 @@ function traceColumn(ribs, colX0, datum, params) {
       { x: nr, y: rows[i + 1].yTop },
       { x: nl, y: rows[i + 1].yTop },
     ];
-    subs.push(pathData(offsetFromCentre(notch, -half), true));
+    subs.push(pathData(offsetEdges(notch, -half), true));
   }
   return subs.join(' ');
 }
@@ -227,6 +264,16 @@ export function renderRibLadderSVG(model, params) {
     ? Math.max(...allRibs.map((s) => { const la = s.points.find((p) => p.x < 0); return la ? -la.x : 0; }))
     : 0;
 
+  // Symmetric to leftPad: reserve the widest RIGHT-apex overhang (= reach) so the rightmost
+  // column's right points stay on-sheet. NOTE: with interlock, a column and its neighbour never
+  // both point at the same band (complementary parity), so same-band point/point collisions no
+  // longer occur — rightPad's only remaining job is the off-sheet clip of the rightmost column.
+  // Clear mode has no right apex => rightPad = 0 => byte-identical layout to before.
+  const anyRightApex = allRibs.some((s) => s.points.some((p) => p.x > s.width));
+  const rightPad = anyRightApex
+    ? Math.max(...allRibs.map((s) => { const ra = s.points.find((p) => p.x > s.width); return ra ? ra.x - s.width : 0; }))
+    : 0;
+
   const cutPaths = [];
   const notes = [];
   let colX0 = margin + kerf / 2 + leftPad;
@@ -244,8 +291,8 @@ export function renderRibLadderSVG(model, params) {
       `<text data-role="qty" data-face="${col.face}" ` +
         `x="${fmt(colX0)}" y="${fmt(datum - 1.5)}">${col.label} cut x${col.qty}</text>`
     );
-    maxRight = colX0 + width + kerf / 2;
-    colX0 = colX0 + width + kerf + gutter;
+    maxRight = colX0 + width + kerf / 2 + rightPad;
+    colX0 = colX0 + width + kerf + gutter + rightPad;
   }
 
   const w = maxRight + margin;

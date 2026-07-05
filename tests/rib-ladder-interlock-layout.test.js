@@ -1,0 +1,137 @@
+// tests/rib-ladder-interlock-layout.test.js
+// Garbled-SVG fix, three parts:
+//  (1) symmetric rightPad keeps the rightmost column's right POINTS on-sheet (interlock removes
+//      same-band point/point collisions BY CONSTRUCTION, so rightPad is now purely an
+//      off-sheet-clip guard for the rightmost column).
+//  (2) a genuine per-edge outward-NORMAL offset (offsetEdges) replaces the bbox-centre radial
+//      offset, so the MIDDLE wide rib's 45deg bevel is no longer tilted (the bbox offset gave the
+//      centre-line apex a zero y-offset while its rails got +-kerf/2) and concave notch reflex
+//      vertices offset with the correct sign.
+//  (3) the tab-jog push is guarded, so a straight clear column carries no redundant zero-length
+//      vertices — the clear layout stays GEOMETRICALLY identical (re-baselining the former
+//      "byte-for-byte unaffected" expectation to geometric equivalence, flagged intentional).
+import { describe, it, expect } from 'vitest';
+import { renderRibLadderSVG, offsetEdges } from '../src/render/svg.js';
+import { computeMetrics } from '../src/geometry/metrics.js';
+import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
+import { cornerPointReach } from '../src/geometry/ribShapes.js';
+
+function ladder(overrides = {}) {
+  const params = normalizeParams({ ...DEFAULT_PARAMS, ...overrides });
+  const model = { metrics: computeMetrics(params) };
+  return { svg: renderRibLadderSVG(model, params), params, metrics: model.metrics };
+}
+function ladderPaths(svg) {
+  const out = [];
+  const re = /<path ([^>]*?)\/>/g;
+  let m;
+  while ((m = re.exec(svg)) !== null) {
+    const attrs = {};
+    const are = /([\w-]+)="([^"]*)"/g;
+    let a;
+    while ((a = are.exec(m[1])) !== null) attrs[a[1]] = a[2];
+    if (attrs['data-role'] === 'ladder') out.push(attrs);
+  }
+  return out;
+}
+// vertices of the OUTER subpath (everything before the first Z), in traced order.
+function outerVerts(d) {
+  const nums = d.split('Z')[0].trim().match(/-?[\d.]+/g).map(Number);
+  const v = [];
+  for (let i = 0; i < nums.length; i += 2) v.push({ x: nums[i], y: nums[i + 1] });
+  return v;
+}
+function bbox(verts) {
+  const xs = verts.map((p) => p.x);
+  const ys = verts.map((p) => p.y);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+}
+const sheetWidth = (svg) => Number(svg.match(/width="([\d.]+)mm"/)[1]);
+// angle of segment a->b measured from the vertical draw axis, in degrees.
+const angleFromVertical = (a, b) =>
+  (Math.atan2(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) * 180) / Math.PI;
+
+describe('renderRibLadderSVG — interlock layout is on-sheet & un-garbled', () => {
+  it('(1) interlock W + H columns are fully on-sheet (minX >= 0, maxX <= sheet width)', () => {
+    const { svg } = ladder({ frontW: 160, frontH: 115, cornerMode: 'interlock' });
+    const W = sheetWidth(svg);
+    const paths = ladderPaths(svg);
+    expect(paths.length).toBe(2); // rectangular => W + H, independent of the square dedupe fix
+    for (const a of paths) {
+      const b = bbox(outerVerts(a.d));
+      expect(b.minX).toBeGreaterThanOrEqual(-1e-6);   // left points not clipped off the left edge
+      expect(b.maxX).toBeLessThanOrEqual(W + 1e-6);   // right points not clipped off the right edge
+    }
+  });
+
+  it('(2) the MIDDLE wide rib keeps a 45deg bevel (per-edge normal, not tilted by the bbox offset)', () => {
+    const { svg, params, metrics } = ladder({ frontW: 160, frontH: 115, cornerMode: 'interlock' });
+    const width = 160 - 2 * params.cornerAllowance;
+    const reach = cornerPointReach(params.rib, params.cornerAllowance);
+    const colX0 = 5 + params.kerf / 2 + reach; // margin + kerf/2 + leftPad(=reach)
+    const midY = params.endMargin + ((metrics.ribCount - 1) * metrics.pitch + params.rib) / 2;
+    const wCol = ladderPaths(svg).find((a) => a['data-face'] === 'W');
+    const verts = outerVerts(wCol.d);
+    // A right apex pokes ~reach past the right rail; grown rail corners are only ~kerf/2 past it.
+    const apexes = verts.map((p, i) => ({ p, i })).filter(({ p }) => p.x > colX0 + width + 1);
+    expect(apexes.length).toBeGreaterThan(0);
+    const mid = apexes.sort((u, v) => Math.abs(u.p.y - midY) - Math.abs(v.p.y - midY))[0];
+    expect(Math.abs(mid.p.y - midY)).toBeLessThan(1e-6);        // it really is the centre-line apex
+    const prev = verts[(mid.i - 1 + verts.length) % verts.length];
+    const next = verts[(mid.i + 1) % verts.length];
+    expect(angleFromVertical(mid.p, prev)).toBeCloseTo(45, 1);  // lower bevel ~45deg
+    expect(angleFromVertical(mid.p, next)).toBeCloseTo(45, 1);  // upper bevel ~45deg
+  });
+
+  it('(3) clear mode stays GEOMETRICALLY identical: no zero-length vertices, same rails/bbox', () => {
+    const { svg, params } = ladder({ frontW: 160, frontH: 115, cornerMode: 'clear' });
+    const wCol = ladderPaths(svg).find((a) => a['data-face'] === 'W');
+    const verts = outerVerts(wCol.d);
+    // (a) intentional string change: the tab-jog guard drops the duplicate collinear vertex on a
+    //     straight column, so no two consecutive outer vertices coincide (no zero-length edge).
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % verts.length];
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(1e-9);
+    }
+    // (b) geometric equivalence: still the same kerf-grown rectangle, straight rails.
+    const half = params.kerf / 2;
+    const width = 160 - 2 * params.cornerAllowance;
+    const colX0 = 5 + half; // margin + kerf/2, leftPad=0 in clear
+    const b = bbox(verts);
+    expect(b.minX).toBeCloseTo(colX0 - half, 6);
+    expect(b.maxX).toBeCloseTo(colX0 + width + half, 6);
+    expect(b.maxX - b.minX).toBeCloseTo(width + params.kerf, 6);
+    for (const p of verts.filter((v) => v.x < colX0)) expect(p.x).toBeCloseTo(colX0 - half, 6);
+    for (const p of verts.filter((v) => v.x > colX0 + width)) expect(p.x).toBeCloseTo(colX0 + width + half, 6);
+  });
+
+  it('(4) offsetEdges is a true per-edge outward-normal offset (convex + concave, winding-aware)', () => {
+    const width = 20, depth = 12, reach = 6, notchDepth = 6.5, half = 0.075;
+    // Polygons built in traceColumn's own winding: left rail DOWN (with left feature), then right
+    // rail UP (with right feature) — the same order/winding traceColumn feeds to offsetEdges.
+    const wide = [
+      { x: 0, y: 0 }, { x: -reach, y: depth / 2 }, { x: 0, y: depth },
+      { x: width, y: depth }, { x: width + reach, y: depth / 2 }, { x: width, y: 0 },
+    ];
+    const gw = offsetEdges(wide, half);
+    expect(gw[4].x).toBeGreaterThan(width + reach);       // right apex grows further OUT (+x)
+    expect(gw[4].y).toBeCloseTo(depth / 2, 6);            // apex stays on the y-midline (pure normal)
+    expect(gw[1].x).toBeLessThan(-reach);                 // left apex grows further OUT (more -x)
+    const narrow = [
+      { x: 0, y: 0 }, { x: notchDepth, y: depth / 2 }, { x: 0, y: depth },
+      { x: width, y: depth }, { x: width - notchDepth, y: depth / 2 }, { x: width, y: 0 },
+    ];
+    const gn = offsetEdges(narrow, half);
+    // The reflex NOTCH tips move toward their rail (notch gets SHALLOWER) under an outward grow —
+    // the exact sign the bbox-radial offset got WRONG at a reflex vertex.
+    expect(gn[1].x).toBeLessThan(notchDepth);             // left notch tip toward x=0 rail
+    expect(gn[4].x).toBeGreaterThan(width - notchDepth);  // right notch tip toward x=width rail
+    // a plain axis-aligned corner still moves by (±half, ±half): matches the old offsetFromCentre,
+    // so clear-mode columns are geometrically unchanged.
+    const rect = [ { x: 0, y: 0 }, { x: 0, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 0 } ];
+    const gr = offsetEdges(rect, half);
+    expect(gr[0].x).toBeCloseTo(-half, 6); expect(gr[0].y).toBeCloseTo(-half, 6);
+    expect(gr[2].x).toBeCloseTo(20 + half, 6); expect(gr[2].y).toBeCloseTo(10 + half, 6);
+  });
+});
