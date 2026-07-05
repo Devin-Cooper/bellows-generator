@@ -185,8 +185,17 @@ function traceColumn(ribs, colX0, datum, params) {
   const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
   for (let i = 0; i < N - 1; i++) {
-    const nl = colX0 + tabW;
-    const nr = colX0 + Math.min(rows[i].width, rows[i + 1].width) - tabW; // clamp to narrower rib
+    // Actual outer polygon left/right boundary at the gap between rib i (bottom) and rib i+1 (top).
+    // For a clear rib: leftEdge=0, rightEdge=width (same as the old formula).
+    // For an interlock inward gap (leading bottom / rear top): leftEdge=setback, rightEdge=width-setback.
+    // For an interlock outward gap (rear bottom / leading top): leftEdge=-reach, rightEdge=width+reach.
+    // The tab notch must sit tabW mm INSIDE the actual outer boundary on both sides — using the bare
+    // clear-width origin (colX0+0 / colX0+width) causes the notch to exceed available material at
+    // inward-gap transitions where setback > tabW, leaving zero connector tab.
+    const leftEdge = Math.max(rows[i].leftBot, rows[i + 1].leftTop);
+    const rightEdge = Math.min(rows[i].rightBot, rows[i + 1].rightTop);
+    const nl = colX0 + leftEdge + tabW;
+    const nr = colX0 + rightEdge - tabW;
     if (nr <= nl) continue;
     const notch = [
       { x: nl, y: rows[i].yBot },

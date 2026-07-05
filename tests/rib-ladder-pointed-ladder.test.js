@@ -101,4 +101,51 @@ describe('renderRibLadderSVG — interlock trapezoid rail routing (point OUT, se
     expect(Math.max(...leftXs) - Math.min(...leftXs)).toBeLessThan(1e-6);
     expect(Math.max(...rightXs) - Math.min(...rightXs)).toBeLessThan(1e-6);
   });
+
+  it('(d) interlock connector tabs: notch stays within outer boundary at every gap (tabW material on each side)', () => {
+    // Default params: rib=12, cornerAllowance=15 → reach=setback=6, tabW=2.
+    // At INWARD-gap transitions (leading bottom / rear top): outer spans [colX0+setback, colX0+w-setback].
+    // The old code used nl=colX0+tabW (2 < setback=6) → notch exceeded the outer boundary, leaving
+    // ZERO connector tab material. The fix clamps nl/nr to the actual outer boundary ± tabW.
+    const il = ladder({ cornerMode: 'interlock' });
+    const d = ladderPaths(il.svg, 'W')[0].d;
+    // Each Z-delimited subpath: subpaths[0] = outer boundary, subpaths[1..] = notch rectangles.
+    const subpaths = d.split('Z').map((s) => s.trim()).filter(Boolean);
+    expect(subpaths.length).toBeGreaterThanOrEqual(2); // at least one notch
+    const parseSubpath = (s) => {
+      const nums = s.match(/-?[\d.]+/g).map(Number);
+      const pts = [];
+      for (let i = 0; i < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+      return pts;
+    };
+    const outerPts = parseSubpath(subpaths[0]);
+    // Find the outer polygon x-range at a given y by ray-casting along edges.
+    const outerBoundsAtY = (y) => {
+      const xs = [];
+      const eps2 = 1e-6;
+      for (let i = 0; i < outerPts.length; i++) {
+        const a = outerPts[i];
+        const b = outerPts[(i + 1) % outerPts.length];
+        const lo = Math.min(a.y, b.y);
+        const hi = Math.max(a.y, b.y);
+        if (y < lo - eps2 || y > hi + eps2) continue;
+        const t = Math.abs(b.y - a.y) < eps2 ? 0.5 : (y - a.y) / (b.y - a.y);
+        xs.push(a.x + Math.max(0, Math.min(1, t)) * (b.x - a.x));
+      }
+      return xs.length ? { minX: Math.min(...xs), maxX: Math.max(...xs) } : null;
+    };
+    const eps = 1e-6;
+    for (let n = 1; n < subpaths.length; n++) {
+      const notchPts = parseSubpath(subpaths[n]);
+      const notchYs = notchPts.map((p) => p.y);
+      const midY = (Math.min(...notchYs) + Math.max(...notchYs)) / 2;
+      const notchMinX = Math.min(...notchPts.map((p) => p.x));
+      const notchMaxX = Math.max(...notchPts.map((p) => p.x));
+      const outer = outerBoundsAtY(midY);
+      expect(outer).not.toBeNull();
+      // Notch must sit strictly inside the outer boundary — tab material > 0 on each side.
+      expect(notchMinX).toBeGreaterThan(outer.minX + eps);  // left tab material > 0
+      expect(notchMaxX).toBeLessThan(outer.maxX - eps);     // right tab material > 0
+    }
+  });
 });
