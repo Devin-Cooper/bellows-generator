@@ -6,10 +6,11 @@ export const DEFAULT_PARAMS = {
   glueTab: 10, endMargin: 35,
   fabricThickness: 0.5, ribThickness: 0.4, kerf: 0.15,
   focalLength: 150, opticalOffset: 40, pageSize: 'A4',
-  // Stiffener overhaul: corner-point mode + 3D-print bed/offset.
-  // cornerMode: 'clear' (default) | 'pointed' | 'alternating' — Phase 5 adds the
-  // non-clear geometry. bedSize = 3D print bed (mm) for column bed-wrap (Phase 4).
-  // printOffset = inward 3D offset (mm), opposite sign to laser kerf (Phase 4).
+  // Stiffener overhaul: corner-stiffening mode + 3D-print bed/offset.
+  // cornerMode: 'clear' (default, open corners) | 'interlock' (complementary point/notch
+  // corners that nest as the tube folds). Legacy 'pointed'/'alternating' migrate to
+  // 'interlock' in normalizeParams. bedSize = 3D print bed (mm) for column bed-wrap.
+  // printOffset = inward 3D offset (mm), opposite sign to laser kerf.
   cornerMode: 'clear', bedSize: 220, printOffset: 0.1,
 };
 
@@ -27,6 +28,13 @@ export function normalizeParams(params) {
   if (p.type === 'straight') {
     p.rearW = p.frontW;
     p.rearH = p.frontH;
+  }
+  // Migrate the removed corner modes. The remap lives HERE (not only in paramsFromQuery) so
+  // every restore path — query string, localStorage, and presets — collapses the old
+  // 'pointed'/'alternating' onto the reworked 'interlock' geometry. 'clear'/'interlock'/
+  // undefined are left untouched.
+  if (p.cornerMode === 'pointed' || p.cornerMode === 'alternating') {
+    p.cornerMode = 'interlock';
   }
   return p;
 }

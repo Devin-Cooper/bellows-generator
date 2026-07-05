@@ -7,13 +7,12 @@ import { buildPatternModel } from '../src/geometry/index.js';
 import { LAYER } from '../src/constants.js';
 
 describe('control panel — stiffener params', () => {
-  it('renders a cornerMode select with the three modes in the Corners group', () => {
+  it('renders a cornerMode select offering clear + interlock in the Corners group', () => {
     const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
     const sel = el.querySelector('select[data-key="cornerMode"]');
     expect(sel, 'cornerMode select not rendered').not.toBeNull();
     const opts = [...sel.querySelectorAll('option')].map((o) => o.value);
-    expect(opts).toEqual(['clear', 'pointed', 'alternating']);
-    // lands in the Corners fieldset, not Material
+    expect(opts).toEqual(['clear', 'interlock']);
     const legend = sel.closest('fieldset').querySelector('legend').textContent;
     expect(legend).toBe('Corners, tabs & margins');
   });
@@ -37,24 +36,24 @@ describe('control panel — stiffener params', () => {
     expect(el.querySelector('[data-key="printOffset"]').value).toBe('0.1');
   });
 
-  it('changing the cornerMode select fires onChange with the new mode', () => {
+  it('changing the cornerMode select fires onChange with interlock', () => {
     const onChange = vi.fn();
     const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS }, onChange });
     const sel = el.querySelector('[data-key="cornerMode"]');
-    sel.value = 'pointed';
+    sel.value = 'interlock';
     sel.dispatchEvent(new Event('change'));
     const last = onChange.mock.calls.at(-1)[0];
-    expect(last.cornerMode).toBe('pointed');
+    expect(last.cornerMode).toBe('interlock');
   });
 
-  it('cornerMode reaches the geometry: pointed footprints differ from clear', () => {
+  it('cornerMode reaches the geometry: interlock footprints differ from clear', () => {
     const engrave = (m) => m.segments.filter((s) => s.layer === LAYER.ENGRAVE);
     const clear = engrave(buildPatternModel({ ...DEFAULT_PARAMS, cornerMode: 'clear' }));
-    const pointed = engrave(buildPatternModel({ ...DEFAULT_PARAMS, cornerMode: 'pointed' }));
+    const interlock = engrave(buildPatternModel({ ...DEFAULT_PARAMS, cornerMode: 'interlock' }));
     expect(clear.length).toBeGreaterThan(0);
-    expect(pointed.length).toBeGreaterThan(0);
-    // clear footprints are plain rectangles; pointed beveled ends add vertices
+    expect(interlock.length).toBeGreaterThan(0);
+    // clear footprints are plain rectangles; interlock ends add vertices (>4)
     expect(clear.every((s) => s.points.length === 4)).toBe(true);
-    expect(pointed.some((s) => s.points.length > 4)).toBe(true);
+    expect(interlock.some((s) => s.points.length > 4)).toBe(true);
   });
 });

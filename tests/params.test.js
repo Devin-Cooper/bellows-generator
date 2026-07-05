@@ -68,11 +68,23 @@ describe('stiffener params (cornerMode / bedSize / printOffset)', () => {
     expect(DEFAULT_PARAMS.printOffset).toBe(0.1);
   });
 
-  it('normalizeParams passes the stiffener params through unchanged', () => {
-    const n = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'pointed', bedSize: 256, printOffset: 0.2 });
-    expect(n.cornerMode).toBe('pointed');
+  it('normalizeParams passes clear/interlock through unchanged (with the other stiffener params)', () => {
+    expect(normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'clear' }).cornerMode).toBe('clear');
+    const n = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'interlock', bedSize: 256, printOffset: 0.2 });
+    expect(n.cornerMode).toBe('interlock');
     expect(n.bedSize).toBe(256);
     expect(n.printOffset).toBe(0.2);
+  });
+
+  it('migrates the removed pointed/alternating modes to interlock', () => {
+    expect(normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'pointed' }).cornerMode).toBe('interlock');
+    expect(normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'alternating' }).cornerMode).toBe('interlock');
+  });
+
+  it('leaves an undefined cornerMode untouched (does not invent a mode)', () => {
+    const { cornerMode, ...noMode } = DEFAULT_PARAMS;
+    expect(normalizeParams({ ...noMode }).cornerMode).toBeUndefined();
+    expect(normalizeParams({ ...DEFAULT_PARAMS }).cornerMode).toBe('clear');
   });
 
   it('A6_PRESET inherits the stiffener defaults', () => {

@@ -50,3 +50,19 @@ describe('query round-trip', () => {
     expect(paramsFromQuery(paramsToQuery(p))).toEqual(p);
   });
 });
+
+describe('cornerMode migration through the query path', () => {
+  it('a legacy ?cornerMode=pointed restores as interlock (via normalizeParams)', () => {
+    expect(paramsFromQuery('?cornerMode=pointed').cornerMode).toBe('interlock');
+  });
+
+  it('a legacy ?cornerMode=alternating restores as interlock', () => {
+    expect(paramsFromQuery('?cornerMode=alternating').cornerMode).toBe('interlock');
+  });
+
+  it('interlock round-trips through toQuery -> fromQuery', () => {
+    const p = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'interlock' });
+    expect(paramsToQuery(p)).toBe('?cornerMode=interlock');
+    expect(paramsFromQuery(paramsToQuery(p)).cornerMode).toBe('interlock');
+  });
+});

@@ -66,9 +66,9 @@ export const FIELDS = {
   cornerMode: {
     label: 'Corner stiffening',
     unit: '',
-    hint: 'Clear = open corners (default); pointed = crisp mitered corner points (thicker fold pack); alternating = wide/narrow points to save corner bulk.',
+    hint: 'Clear = open corners (default). Interlock = complementary point-and-notch corners that nest as the tube folds — stiffer corners, whole strips only.',
     kind: 'select',
-    options: ['clear', 'pointed', 'alternating'],
+    options: ['clear', 'interlock'],
   },
   glueTab: {
     label: 'Glue tab',

@@ -106,6 +106,11 @@ export function cornerPointReach(depth, cornerAllowance) {
  * @returns {{leftPointed:boolean,rightPointed:boolean}}
  */
 export function cornerModeEnds(cornerMode, wallIndex, ribIndex) {
+  // 'interlock' is wired here as the migration lands (params.js remaps pointed/alternating ->
+  // interlock, and STL/tapered/buildPatternModel/ladder all normalize). Task 2 replaces this
+  // placeholder with the real complementary point/notch geometry; for now it reuses the
+  // both-ends point so every consumer keeps working and the suite stays green.
+  if (cornerMode === 'interlock') return { leftPointed: true, rightPointed: true };
   if (cornerMode === 'pointed') return { leftPointed: true, rightPointed: true };
   if (cornerMode === 'alternating') {
     // Point the rib on even (wallIndex + ribIndex) parity, clear on odd:
