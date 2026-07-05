@@ -1,6 +1,6 @@
 import { normalizeParams } from '../params.js';
 import { computeRibCount } from './metrics.js';
-import { LAYER } from '../constants.js';
+import { LAYER, WHOLE_STRIP_NOTE } from '../constants.js';
 import { computeMetrics } from './metrics.js';
 import { computeRibShapes, halfRibPolygon } from './ribShapes.js';
 
@@ -100,6 +100,8 @@ export function buildTaperedPattern(params) {
         layer: LAYER.ENGRAVE,
         closed: true,
         points: poly.map((pt) => ({ x: ox + pt.x, y: oy + pt.y })),
+        // Split-W halves (cols 0 & 4) are one whole strip, not two cut pieces — flag them.
+        ...(isHalf ? { annotation: WHOLE_STRIP_NOTE } : {}),
       });
     }
   }

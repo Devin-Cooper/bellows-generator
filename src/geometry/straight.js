@@ -1,5 +1,7 @@
 // src/geometry/straight.js
-import { LAYER } from '../constants.js';
+import { LAYER, WHOLE_STRIP_NOTE } from '../constants.js';
+// Re-export so callers/tests can pull the fabric-guide note from the footprint producer.
+export { WHOLE_STRIP_NOTE };
 import { computeMetrics } from './metrics.js';
 import { computeRibShapes, halfRibPolygon } from './ribShapes.js';
 
@@ -124,6 +126,8 @@ export function buildStraightPattern(params) {
         layer: LAYER.ENGRAVE,
         closed: true,
         points: poly.map((pt) => ({ x: ox + pt.x, y: ry0 + pt.y })),
+        // Split-W halves (cols 0 & 4) are one whole strip, not two cut pieces — flag them.
+        ...(isHalf ? { annotation: WHOLE_STRIP_NOTE } : {}),
       });
     }
 
