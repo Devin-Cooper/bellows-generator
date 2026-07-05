@@ -38,17 +38,17 @@ describe('STL printability — bed-wrap segmentation', () => {
 });
 
 describe('STL printability — connected breakaway bridges', () => {
-  it('consecutive ribs in a segment are joined by a breakaway bridge', () => {
+  it('consecutive ribs in a segment are joined by TWO breakaway tabs per gap', () => {
     const outs = computeRibOutlines(model, { ...base, bedSize: 1000 });
-    expect(outs.filter((o) => o.kind === 'bridge' && o.face === 'W').length).toBe(4); // 5 ribs, 1 seg
+    expect(outs.filter((o) => o.kind === 'bridge' && o.face === 'W').length).toBe(8); // 5 ribs, 1 seg -> 4 gaps x 2 tabs
   });
 
-  it('no bridge spans a bed boundary (bridges == ribs - segments per family)', () => {
+  it('no bridge spans a bed boundary (bridges == 2*(ribs - segments) per family)', () => {
     const outs = computeRibOutlines(model, { ...base, bedSize: 40 });
     const wRibs = outs.filter((o) => o.kind === 'rib' && o.face === 'W').length;   // 5
     const segs = wSegs(outs).size;                                                 // 3
     const wBridges = outs.filter((o) => o.kind === 'bridge' && o.face === 'W').length;
-    expect(wBridges).toBe(wRibs - segs); // 5 - 3 = 2
+    expect(wBridges).toBe(2 * (wRibs - segs)); // 2 interior gaps -> 4 tabs
   });
 
   it('bridges are thin (<=2mm across) so they snap away after bonding', () => {

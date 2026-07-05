@@ -39,6 +39,23 @@ function insetPolygon(pts, d) {
 }
 
 /**
+ * X-centres of the breakaway tab(s) bridging one intra-segment gap, on the CLEAR width only
+ * (the flat edges — NEVER the projecting interlock point). Normally TWO tabs, each inset by
+ * `inset` (cornerAllowance) from a clear edge, so the snap scars clear the corner-fold zone.
+ * A SMALL face (clearWidth < 2*(inset + BRIDGE_WIDTH/2)) can't fit two inset tabs and collapses
+ * to a single centred tab. Tapered gaps pass the NARROWER of the two adjacent clear widths (both
+ * ribs share `xCenter`) so each returned tab lands on BOTH ribs.
+ * @param {number} clearWidth  min clear width of the two adjacent ribs
+ * @param {number} xCenter     shared column centre both ribs are recentred on
+ * @param {number} inset       cornerAllowance inset from each clear edge
+ * @returns {number[]}  one (clamped) or two tab x-centres
+ */
+export function bridgeTabXs(clearWidth, xCenter, inset) {
+  if (clearWidth < 2 * (inset + BRIDGE_WIDTH / 2)) return [xCenter];
+  return [xCenter - clearWidth / 2 + inset, xCenter + clearWidth / 2 - inset];
+}
+
+/**
  * Rib solids for the 3D print, derived from the single canonical rib geometry
  * (computeRibShapes). Two W walls + two H walls collapse to one representative column
  * per face -> both W and H families are printed (P2). Each rib carries its INSET clear
@@ -54,6 +71,7 @@ export function computeRibOutlines(model, params) {
   const shapes = computeRibShapes(p);
   const off = p.printOffset;
   const bed = p.bedSize;
+  const ca = p.cornerAllowance;
   const z0 = 0;
   const z1 = p.ribThickness;
 
@@ -102,25 +120,36 @@ export function computeRibOutlines(model, params) {
         // record the placed rib's INSET y-extent (printOffset shrinks it inward) so bridges
         // attach to the real edges, not the pre-inset rib depth.
         const insetExt = yExtent(pts);
-        spans.push({ yMin: insetExt.min, yMax: insetExt.max });
+        // clear-width frame (the flat edges only, NOT the projecting point): both mating ribs are
+        // recentred on xCursor, so the clear span is xCursor +- width/2. Recorded for tab placement.
+        spans.push({ yMin: insetExt.min, yMax: insetExt.max, clearWidth: s.width, xCenter: xCursor });
         maxW = Math.max(maxW, widthOf(s.points));
         yCursor += depth + p.gap;
       }
-      // CONNECTED breakaway bridges: one thin tab across each intra-segment gap (none
-      // across the bed boundary, so each segment is one placeable, snap-apart object).
-      // Span from just inside the lower rib's inset top edge to just inside the upper rib's
-      // inset bottom edge (BRIDGE_OVERLAP each side) so the tab is fused to both, even when
-      // printOffset>0 has pulled the inset ribs apart.
+      // CONNECTED breakaway bridges: TWO thin tabs across each intra-segment gap, INSET from the
+      // clear-width ends (never across the bed boundary, so each segment stays one placeable,
+      // snap-apart object). Each tab spans from just inside the lower rib's inset top edge to just
+      // inside the upper rib's inset bottom edge (BRIDGE_OVERLAP each side) so it is fused to both,
+      // even when printOffset>0 has pulled the inset ribs apart. Placing the tabs cornerAllowance
+      // in from each flat edge keeps the break scar out of the corner-fold zone; a small face
+      // collapses to a single centred tab (see bridgeTabXs).
       for (let k = 0; k < spans.length - 1; k++) {
         const y0 = spans[k].yMax - BRIDGE_OVERLAP;
         const y1 = spans[k + 1].yMin + BRIDGE_OVERLAP;
-        const bx0 = xCursor - BRIDGE_WIDTH / 2;
-        const bx1 = xCursor + BRIDGE_WIDTH / 2;
-        solids.push({
-          kind: 'bridge', face, ribIndex: ribs[segStart + k].ribIndex, segmentIndex: segIndex,
-          points: [{ x: bx0, y: y0 }, { x: bx1, y: y0 }, { x: bx1, y: y1 }, { x: bx0, y: y1 }],
-          z0, z1,
-        });
+        // tapered: use the NARROWER of the two adjacent clear widths so each tab lands on both ribs.
+        const clearWidth = Math.min(spans[k].clearWidth, spans[k + 1].clearWidth);
+        for (const tx of bridgeTabXs(clearWidth, spans[k].xCenter, ca)) {
+          solids.push({
+            kind: 'bridge', face, ribIndex: ribs[segStart + k].ribIndex, segmentIndex: segIndex,
+            points: [
+              { x: tx - BRIDGE_WIDTH / 2, y: y0 },
+              { x: tx + BRIDGE_WIDTH / 2, y: y0 },
+              { x: tx + BRIDGE_WIDTH / 2, y: y1 },
+              { x: tx - BRIDGE_WIDTH / 2, y: y1 },
+            ],
+            z0, z1,
+          });
+        }
       }
       xCursor += maxW + PLATE_MARGIN;
       segIndex++;
