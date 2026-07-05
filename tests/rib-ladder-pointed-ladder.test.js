@@ -1,16 +1,17 @@
 // tests/rib-ladder-pointed-ladder.test.js
-// MIGRATED (interlock rework): pointed/alternating are removed; cornerMode is {clear|interlock}.
-// In interlock the rib-ladder trace must dent EACH rail INWARD at a narrow rib's notch
-// (a vertex with 0 < x < width) and OUTWARD at a wide rib's point — otherwise narrow ribs
-// cut as plain rectangles and nothing nests. Clear mode keeps straight rails. The trace
-// stays ONE connected path with its connector-tab notches (M count === ribCount).
+// MIGRATED (interlock trapezoid rework): pointed/alternating are removed; cornerMode is
+// {clear|interlock}. In interlock the rib-ladder trace follows each rib's TRAPEZOID: the point
+// projects OUTWARD past a rail at one band edge (x < railL or x > railR) and the short cut-off
+// edge sets IN past the opposite rail at the other band edge — one diagonal per rib end. Clear
+// mode keeps straight rails. The trace stays ONE connected path with its connector-tab notches
+// (M count === ribCount).
 import { describe, it, expect } from 'vitest';
 import { renderRibLadderSVG } from '../src/render/svg.js';
 import { computeMetrics } from '../src/geometry/metrics.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
 
 // non-square (160x115) so W and H columns keep distinct widths and are NOT merged by the
-// (still width-only, pre-Task-5) dedupe — we inspect the W column in isolation.
+// (still width-aware, pre-Task-6) dedupe — we inspect the W column in isolation.
 function ladder(overrides = {}) {
   const params = normalizeParams({ ...DEFAULT_PARAMS, frontW: 160, frontH: 115, ...overrides });
   const model = { metrics: computeMetrics(params) };
@@ -42,7 +43,7 @@ function outerPoints(d) {
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
-// most-frequent value (the straight rail: 2 corner points per rib dominate apex/notch).
+// most-frequent value (the grown rail x dominates the diagonal apex/setback x's).
 function mode(values) {
   const counts = new Map();
   let best = values[0];
@@ -56,32 +57,29 @@ function mode(values) {
   return best;
 }
 
-describe('renderRibLadderSVG — interlock rail routing (points OUT, notches IN)', () => {
-  it('(a) narrow ribs dent BOTH rails inward; wide ribs point BOTH rails outward', () => {
+describe('renderRibLadderSVG — interlock trapezoid rail routing (point OUT, setback IN)', () => {
+  it('(a) interlock ribs project a point OUTWARD past a rail and set the cut-off edge IN', () => {
     const il = ladder({ cornerMode: 'interlock' });
     const pts = outerPoints(ladderPaths(il.svg, 'W')[0].d);
     const xs = pts.map((p) => p.x);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2; // column centre
     const leftXs = xs.filter((x) => x < cx);
     const rightXs = xs.filter((x) => x > cx);
-    const railL = mode(leftXs);  // straight (grown) left rail
-    const railR = mode(rightXs); // straight (grown) right rail
+    const railL = mode(leftXs);  // grown left rail (the clear-width edge)
+    const railR = mode(rightXs); // grown right rail
 
-    // WIDE rib point protrudes OUTWARD past each rail:
+    // the trapezoid POINT juts OUTWARD past each rail (reach projection):
     expect(Math.min(...leftXs)).toBeLessThan(railL - 1e-6);     // left point < left rail
     expect(Math.max(...rightXs)).toBeGreaterThan(railR + 1e-6); // right point > right rail
 
-    // NARROW rib notch dents INWARD from each rail (the Task-3 behaviour under test):
-    const leftDent = Math.max(...leftXs);   // rightmost left-half point = inward dent
-    const rightDent = Math.min(...rightXs); // leftmost right-half point = inward dent
-    expect(leftDent).toBeGreaterThan(railL + 1e-6);  // left rail dented inward
-    expect(rightDent).toBeLessThan(railR - 1e-6);    // right rail dented inward
-
-    // dents stay strictly INSIDE the column (0 < x < width, per the contract):
-    expect(leftDent).toBeGreaterThan(railL);
-    expect(leftDent).toBeLessThan(railR);
-    expect(rightDent).toBeLessThan(railR);
-    expect(rightDent).toBeGreaterThan(railL);
+    // the SHORT cut-off (setback) edge sits INWARD of each rail at the opposite band edge:
+    const leftSetback = Math.max(...leftXs);   // rightmost left-half point = inward setback
+    const rightSetback = Math.min(...rightXs); // leftmost right-half point = inward setback
+    expect(leftSetback).toBeGreaterThan(railL + 1e-6);  // left setback inward of the rail
+    expect(rightSetback).toBeLessThan(railR - 1e-6);    // right setback inward of the rail
+    // setbacks stay strictly inside the column
+    expect(leftSetback).toBeLessThan(railR);
+    expect(rightSetback).toBeGreaterThan(railL);
   });
 
   it('(b) still ONE connected path per family; connector tabs preserved (M count === ribCount)', () => {
@@ -93,7 +91,7 @@ describe('renderRibLadderSVG — interlock rail routing (points OUT, notches IN)
     expect((d.match(/M /g) || []).length).toBe(il.metrics.ribCount);
   });
 
-  it('(c) clear mode: straight rails — no apex, no inward dent', () => {
+  it('(c) clear mode: straight rails — no projecting point, no inward setback', () => {
     const clr = ladder({ cornerMode: 'clear' });
     const xs = outerPoints(ladderPaths(clr.svg, 'W')[0].d).map((p) => p.x);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;

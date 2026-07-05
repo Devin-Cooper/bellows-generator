@@ -139,13 +139,13 @@ function faceColumnRibs(shapes, face) {
 
 /**
  * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
- * Ribs are left-aligned (straight left rail); the outer boundary follows each rib's own
- * edges. In interlock mode a rib carries a corner end-vertex on its y-midline: a WIDE rib
- * POINTS outward (left x=-reach, right x=width+reach) and a NARROW rib is NOTCHED inward
- * (left x=+notchDepth, right x=width-notchDepth). Each rail is dented to follow that vertex
- * on BOTH ends (out for a point, in for a notch); clear ribs have no such vertex and keep a
- * straight rail. A tab jog crosses every gap. Outer grown OUTWARD by kerf/2; one middle
- * notch per gap shrunk INWARD, clamped to the narrower adjacent rib so connector tabs survive.
+ * Ribs are left-aligned; the outer boundary follows each rib's own edges. Each rib polygon is
+ * a convex 4-vertex shape with exactly two vertices at its top band edge (y=0) and two at its
+ * bottom band edge (y=depth) — a clear rectangle (straight rails) OR an interlock TRAPEZOID (a
+ * single diagonal per rib end, its point on a band edge). The tracer reads the left/right x at
+ * each band edge and stitches them into ONE connected loop: down the left side rib-by-rib, then
+ * up the right side. Outer grown OUTWARD by kerf/2; one middle connector-tab notch per gap shrunk
+ * INWARD on the clear width, clamped to the narrower adjacent rib so the snap-apart tabs survive.
  */
 function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
@@ -154,44 +154,39 @@ function traceColumn(ribs, colX0, datum, params) {
   // floor at 1mm so the lattice never severs, even at cornerAllowance=0 (guards the original P0)
   const tabW = Math.max(1, Math.min(2, params.cornerAllowance));
   const N = ribs.length;
-  const midY = rib / 2; // the corner point / notch vertex sits on the rib's y-midline
 
+  // Read each rib's left/right x at both band edges (y=0 top, y=depth bottom). Works for a clear
+  // rectangle (leftTop=leftBot=0, rightTop=rightBot=width) AND an interlock trapezoid (one edge
+  // carries -reach/width+reach, the other setback/width-setback), so ONE tracer serves both.
   const rows = ribs.map((s, r) => {
     const yTop = datum + r * pit;
-    return { xL: colX0, xR: colX0 + s.width, yTop, yBot: yTop + rib, shape: s };
+    const y0 = s.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x);
+    const yd = s.points.filter((p) => Math.abs(p.y - rib) < 1e-6).map((p) => p.x);
+    return {
+      yTop,
+      yBot: yTop + rib,
+      width: s.width,
+      leftTop: Math.min(...y0),
+      rightTop: Math.max(...y0),
+      leftBot: Math.min(...yd),
+      rightBot: Math.max(...yd),
+    };
   });
-
-  // Corner end-vertex = the polygon vertex on the rib's y-midline. Its x carries its own sign
-  // relative to the rail, so the SAME arithmetic dents OUT for a wide point and IN for a
-  // narrow notch. Split by width/2 to pick the left- vs right-rail vertex; clear ribs have
-  // none (find -> undefined -> straight rail, byte-identical to before).
-  const isEnd = (p) => Math.abs(p.y - midY) < 1e-6;
-  const leftEnd = (s) => s.points.find((p) => isEnd(p) && p.x < s.width / 2);
-  const rightEnd = (s) => s.points.find((p) => isEnd(p) && p.x > s.width / 2);
 
   const outer = [];
   for (let r = 0; r < N; r++) {
-    const s = rows[r].shape;
-    const le = leftEnd(s); // le.x: -reach juts OUT (x<0), +notchDepth dents IN (0<x<width/2)
-    outer.push({ x: rows[r].xL, y: rows[r].yTop });
-    if (le) outer.push({ x: rows[r].xL + le.x, y: rows[r].yTop + midY });
-    outer.push({ x: rows[r].xL, y: rows[r].yBot });
+    outer.push({ x: colX0 + rows[r].leftTop, y: rows[r].yTop });
+    outer.push({ x: colX0 + rows[r].leftBot, y: rows[r].yBot });
   }
   for (let r = N - 1; r >= 0; r--) {
-    const s = rows[r].shape;
-    const re = rightEnd(s); // (re.x - width): +reach juts OUT, -notchDepth dents IN
-    outer.push({ x: rows[r].xR, y: rows[r].yBot });
-    if (re) outer.push({ x: rows[r].xR + (re.x - s.width), y: rows[r].yTop + midY });
-    outer.push({ x: rows[r].xR, y: rows[r].yTop });
-    // tab jog only across a REAL width step; on a straight column rows[r-1].xR === rows[r].xR,
-    // so the old unconditional push duplicated the just-emitted (xR,yTop) as a zero-length edge.
-    if (r > 0 && rows[r - 1].xR !== rows[r].xR) outer.push({ x: rows[r - 1].xR, y: rows[r].yTop });
+    outer.push({ x: colX0 + rows[r].rightBot, y: rows[r].yBot });
+    outer.push({ x: colX0 + rows[r].rightTop, y: rows[r].yTop });
   }
   const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
   for (let i = 0; i < N - 1; i++) {
     const nl = colX0 + tabW;
-    const nr = Math.min(rows[i].xR, rows[i + 1].xR) - tabW; // clamp to the narrower rib
+    const nr = colX0 + Math.min(rows[i].width, rows[i + 1].width) - tabW; // clamp to narrower rib
     if (nr <= nl) continue;
     const notch = [
       { x: nl, y: rows[i].yBot },

@@ -48,12 +48,14 @@ describe('control panel — stiffener params', () => {
 
   it('cornerMode reaches the geometry: interlock footprints differ from clear', () => {
     const engrave = (m) => m.segments.filter((s) => s.layer === LAYER.ENGRAVE);
+    const distinctXs = (s) => new Set(s.points.map((p) => Math.round(p.x * 1e4) / 1e4)).size;
     const clear = engrave(buildPatternModel({ ...DEFAULT_PARAMS, cornerMode: 'clear' }));
     const interlock = engrave(buildPatternModel({ ...DEFAULT_PARAMS, cornerMode: 'interlock' }));
     expect(clear.length).toBeGreaterThan(0);
     expect(interlock.length).toBeGreaterThan(0);
-    // clear footprints are plain rectangles; interlock ends add vertices (>4)
-    expect(clear.every((s) => s.points.length === 4)).toBe(true);
-    expect(interlock.some((s) => s.points.length > 4)).toBe(true);
+    // clear footprints are plain rectangles (2 rail x-values); interlock ends are convex
+    // trapezoids whose reach/setback add distinct x-values (>2) — same 4 vertices, new shape.
+    expect(clear.every((s) => s.points.length === 4 && distinctXs(s) === 2)).toBe(true);
+    expect(interlock.some((s) => distinctXs(s) > 2)).toBe(true);
   });
 });

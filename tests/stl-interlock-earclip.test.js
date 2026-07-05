@@ -1,12 +1,8 @@
 // tests/stl-interlock-earclip.test.js
-// Interlock narrow ribs are CONCAVE (a triangular notch on each corner end). The STL top/
-// bottom caps must be triangulated concavity-safe (ear-clipping), NOT a vertex-0 fan — a fan
-// spans the notch void, filling it (non-manifold, and the setback a mating point seats into
-// is lost). Rules asserted (numbers are paper-fold-gated so we test the CONSTRUCTION):
-//   * V-2 triangles per polygon, all consistently CCW-wound;
-//   * triangle areas sum EXACTLY to the polygon area (void not covered, no overlap);
-//   * a point inside either notch void is covered by NO triangle;
-//   * clear/wide ribs still triangulate exactly; bed-wrap/bridges unaffected.
+// CORRECTED interlock ribs are CONVEX isosceles TRAPEZOIDS (4 vertices, no concave notch). The
+// STL top/bottom caps triangulate to V-2 = 2 triangles per rib (12-tri prism, same as a clear
+// rectangle), area-conserving and outward-wound. earClip stays (belt-and-suspenders — correct for
+// convex too). Numbers are paper-fold-gated so we test the CONSTRUCTION, not coordinates.
 import { describe, it, expect } from 'vitest';
 import { exportRibsSTL, computeRibOutlines, earClip } from '../src/export/stl.js';
 import { computeRibShapes } from '../src/geometry/ribShapes.js';
@@ -30,127 +26,83 @@ const signedArea = (poly) => {
   return a / 2;
 };
 const triArea = (a, b, c) => ((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; // signed
-const inTriangle = (p, a, b, c) => {
-  const s = (u, v, w) => (v.x - u.x) * (w.y - u.y) - (w.x - u.x) * (v.y - u.y);
-  const d1 = s(a, b, p);
-  const d2 = s(b, c, p);
-  const d3 = s(c, a, p);
-  const neg = d1 < 0 || d2 < 0 || d3 < 0;
-  const pos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(neg && pos);
+const isConvex = (P) => {
+  let sign = 0;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i]; const b = P[(i + 1) % P.length]; const c = P[(i + 2) % P.length];
+    const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(cr) < 1e-12) continue;
+    const s = Math.sign(cr);
+    if (sign === 0) sign = s; else if (s !== sign) return false;
+  }
+  return true;
 };
 
 const shapesFor = (ov) => computeRibShapes(normalizeParams({ ...base, ...ov }));
-const midOf = (s) => (s.yBand.y1 - s.yBand.y0) / 2;
-const narrowRib = (shapes) =>
-  shapes.find((s) => {
-    const m = midOf(s);
-    return s.points.some((p) => Math.abs(p.y - m) < 1e-6 && p.x > 0 && p.x < s.width);
-  });
-const wideRib = (shapes) => shapes.find((s) => s.points.some((p) => p.x < 0)); // outward apex
+// a trapezoid rib projects its point past a clear edge (x<0 or x>width).
+const trapezoidRib = (shapes) => shapes.find((s) => s.points.some((p) => p.x < 0 || p.x > s.width));
 
-describe('earClip — concavity-safe cap triangulation', () => {
-  it('(a) a notched (concave) rib -> V-2 CCW triangles, area-exact, both notch voids empty', () => {
-    const s = narrowRib(shapesFor({ cornerMode: 'interlock' }));
+describe('earClip — convex trapezoid cap triangulation', () => {
+  it('(a) every interlock rib is a convex 4-vertex trapezoid (no reflex/notch vertex on the y-midline)', () => {
+    const shapes = shapesFor({ cornerMode: 'interlock' });
+    const traps = shapes.filter((s) => s.points.some((p) => p.x < 0 || p.x > s.width));
+    expect(traps.length).toBeGreaterThan(0);
+    for (const s of traps) {
+      expect(s.points.length).toBe(4);
+      expect(isConvex(s.points)).toBe(true);
+      const m = (s.yBand.y1 - s.yBand.y0) / 2;
+      expect(s.points.some((p) => Math.abs(p.y - m) < 1e-6)).toBe(false); // no mid-depth vertex
+    }
+  });
+
+  it('(b) a trapezoid caps to V-2 = 2 CCW triangles, area-conserving', () => {
+    const s = trapezoidRib(shapesFor({ cornerMode: 'interlock' }));
     expect(s).toBeTruthy();
     const P = s.points;
     const tris = earClip(P);
-
-    expect(tris.length).toBe(P.length - 2); // V-2 triangles
-
-    const poly = signedArea(P);
-    expect(poly).toBeGreaterThan(0); // canonical ring is CCW
-    let sum = 0;
-    for (const [a, b, c] of tris) {
-      const ar = triArea(P[a], P[b], P[c]);
-      expect(ar).toBeGreaterThan(1e-9); // consistent CCW orientation, no sliver/flip
-      sum += ar;
-    }
-    expect(sum).toBeCloseTo(poly, 6); // AREA CONSERVATION: signed tri-areas sum to the ring
-    // area. NOTE this alone is VACUOUS for concavity — a vertex-0 fan that SPANS the notch void
-    // sums to the very same signed area (the void's over/under contributions cancel). The
-    // per-triangle positivity above + the void-empty checks below are what actually pin the notch.
-
-    const m = midOf(s);
-    const left = P.find((p) => Math.abs(p.y - m) < 1e-6 && p.x < s.width / 2);
-    const right = P.find((p) => Math.abs(p.y - m) < 1e-6 && p.x > s.width / 2);
-    const leftVoid = { x: left.x / 2, y: m };               // strictly inside the left setback
-    const rightVoid = { x: (right.x + s.width) / 2, y: m };  // strictly inside the right setback
-    for (const [a, b, c] of tris) {
-      expect(inTriangle(leftVoid, P[a], P[b], P[c])).toBe(false);
-      expect(inTriangle(rightVoid, P[a], P[b], P[c])).toBe(false);
-    }
-  });
-
-  it('(a2) a TINY-FACE narrow rib (width < 2*notchDepth) still caps cleanly: V-2 tris, none degenerate', () => {
-    // frontW=frontH=40, ca=15 -> width=10; rib=12 -> reach=6, natural notchDepth=6.5 > width/2.
-    // Un-clamped the reflex vertices cross (bowtie): earClip drops below V-2 and the 4V-4 header
-    // math leaves zero-area / degenerate triangles in the buffer (non-manifold STL). The notch-
-    // depth clamp keeps the polygon simple, so the cap triangulates exactly.
-    const s = narrowRib(shapesFor({ cornerMode: 'interlock', frontW: 40, frontH: 40, rearW: 40, rearH: 40, ribCount: 3 }));
-    expect(s, 'a narrow rib exists on the tiny face').toBeTruthy();
-    const P = s.points;
-    const tris = earClip(P);
-    expect(tris.length).toBe(P.length - 2); // exactly V-2 triangles (no dropped ears)
-
+    expect(tris.length).toBe(P.length - 2); // 2
     const poly = signedArea(P);
     expect(poly).toBeGreaterThan(0);
     let sum = 0;
     for (const [a, b, c] of tris) {
       const ar = triArea(P[a], P[b], P[c]);
-      expect(ar).toBeGreaterThan(1e-9); // strictly positive -> no degenerate / zero-area / flipped tri
+      expect(ar).toBeGreaterThan(1e-9); // consistent CCW, no sliver/flip
       sum += ar;
     }
-    expect(sum).toBeCloseTo(poly, 6); // area conserved -> the cap is the polygon, void left empty
+    expect(sum).toBeCloseTo(poly, 6); // caps cover exactly the polygon
   });
 
-  it('(b) convex clear + wide ribs still triangulate exactly (V-2, area-conserving)', () => {
+  it('(b2) clear rectangles still cap exactly (V-2, area-conserving)', () => {
     const rect = shapesFor({ cornerMode: 'clear' })[0].points; // 4-vertex rectangle
     const rt = earClip(rect);
     expect(rt.length).toBe(rect.length - 2);
     let ar = 0;
     for (const [a, b, c] of rt) ar += Math.abs(triArea(rect[a], rect[b], rect[c]));
     expect(ar).toBeCloseTo(Math.abs(signedArea(rect)), 6);
-
-    const wide = wideRib(shapesFor({ cornerMode: 'interlock' })); // pointed both ends (6 verts)
-    const wt = earClip(wide.points);
-    expect(wt.length).toBe(wide.points.length - 2);
-    let aw = 0;
-    for (const [a, b, c] of wt) aw += Math.abs(triArea(wide.points[a], wide.points[b], wide.points[c]));
-    expect(aw).toBeCloseTo(Math.abs(signedArea(wide.points)), 6);
   });
 
-  it('(c) exportRibsSTL caps are OUTWARD (top +z / bottom -z), top-cap area === polygon area, void empty; bridges intact', () => {
+  it('(c) exportRibsSTL: 4V-4 header math (12 tri per 4-vertex rib), caps OUTWARD, area === polygon; bridges intact', () => {
     const params = normalizeParams({ ...base, cornerMode: 'interlock' });
     const solids = computeRibOutlines(model, params);
 
-    // the mesh really contains concave (narrow) ribs, else the assertion proves nothing
-    const isConcave = (s) => {
-      const yMin = Math.min(...s.points.map((p) => p.y));
-      const yMax = Math.max(...s.points.map((p) => p.y));
-      const m = (yMin + yMax) / 2;
-      const xMin = Math.min(...s.points.map((p) => p.x));
-      const xMax = Math.max(...s.points.map((p) => p.x));
-      return s.points.some((p) => Math.abs(p.y - m) < 1e-6 && p.x > xMin && p.x < xMax);
-    };
-    expect(solids.some((s) => s.kind === 'rib' && isConcave(s))).toBe(true);
-    // bed-wrap + breakaway bridges unaffected by the cap change
-    expect(solids.some((s) => s.kind === 'bridge')).toBe(true);
+    // the mesh really contains trapezoid (interlock) ribs, else the assertion proves nothing:
+    // a trapezoid has 4 DISTINCT x-values ({-reach, setback, width-setback, width+reach}),
+    // a clear rectangle only 2.
+    const distinctXs = (s) => new Set(s.points.map((p) => Math.round(p.x * 1e4) / 1e4)).size;
+    expect(solids.some((s) => s.kind === 'rib' && distinctXs(s) > 2)).toBe(true);
+    expect(solids.some((s) => s.kind === 'bridge')).toBe(true); // breakaway bridges unaffected
 
     const buf = exportRibsSTL(model, params);
     const dv = new DataView(buf);
     const triCount = dv.getUint32(80, true);
     const expectedTri = solids.reduce((n, s) => n + 4 * s.points.length - 4, 0);
-    expect(triCount).toBe(expectedTri); // header math still holds (n-2 per cap)
+    expect(triCount).toBe(expectedTri);         // header math still holds (n-2 per cap)
     expect(buf.byteLength).toBe(84 + triCount * 50);
+    // every rib is now 4-vertex -> exactly 12 triangles per rib solid (back down from 6V/20-tri)
+    for (const s of solids.filter((o) => o.kind === 'rib')) expect(s.points.length).toBe(4);
 
     const z1 = params.ribThickness;
-    const z0 = 0; // computeRibOutlines extrudes z0=0 .. z1=ribThickness
-    // GEOMETRIC normal z-component from a triangle's own vertex winding: the z of (v1-v0)x(v2-v0).
-    // The STL stores a ZEROED normal, so this is derived purely from winding. A manifold solid
-    // needs OUTWARD caps: the TOP cap (the +z face) must wind so this is > 0, the BOTTOM cap (the
-    // -z face) must wind so this is < 0. A flipped/inside-out cap (e.g. bottom emitted with the
-    // top's winding) would ship green without this — the void/area checks don't see the sign.
+    const z0 = 0;
     const normalZ = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     let capArea = 0;
     let topCaps = 0;
@@ -177,11 +129,9 @@ describe('earClip — concavity-safe cap triangulation', () => {
         botCaps++;
       }
     }
-    expect(topCaps).toBeGreaterThan(0); // caps really parsed, so the normal-sign asserts ran
+    expect(topCaps).toBeGreaterThan(0);
     expect(botCaps).toBeGreaterThan(0);
     const polyArea = solids.reduce((sum, s) => sum + Math.abs(signedArea(s.points)), 0);
-    // A vertex-0 fan OVER-covers each notch by depth*notchDepth (~78mm^2 x several narrow
-    // ribs = hundreds of mm^2). Ear-clipping conserves area to float32 precision.
-    expect(Math.abs(capArea - polyArea)).toBeLessThan(1);
+    expect(Math.abs(capArea - polyArea)).toBeLessThan(1); // caps cover exactly the base polygons
   });
 });

@@ -1,29 +1,31 @@
 // src/geometry/ribShapes.js
-// Interlock corner geometry (cornerMode 'interlock'): per rib parity p=(wallIndex+ribIndex)%2,
-// WIDE ribs (p even) grow a convex point at BOTH corner ends and NARROW ribs (p odd) cut a
-// concave notch (setback) at BOTH corner ends. Adjacent walls (wallIndex differs by 1) are
-// opposite parity at the same ribIndex, so every corner is exactly one point + one notch — the
-// peak-meets-valley interlock. The exact reach / notchDepth / clearance / taper end-angle are
-// PROVISIONAL and paper-fold-gated (same status as the fabric miters and tapered widths); tests
-// assert the CONSTRUCTION RULE only, not ground-truth coordinates.
-// See docs .../plans/2026-07-04-stiffener-interlock-design.md.
+// Interlock corner geometry (cornerMode 'interlock'): each rib is a CONVEX isosceles TRAPEZOID
+// that carries HALF a corner point. The apex sits ON a band edge (a fold line, y=0 or y=depth),
+// NOT at mid-depth. Per rib parity p=(wallIndex+ribIndex)%2 the trapezoid ORIENTATION flips:
+//   p even -> 'leading' : long/pointing edge on y=0, short cut-off edge on y=depth.
+//   p odd  -> 'rear'    : long/pointing edge on y=depth, short cut-off edge on y=0.
+// `reach` projects the point past the clear-width edge at a band edge; `setback` insets the short
+// cut-off edge at the OPPOSITE band edge. Adjacent walls (wallIndex differs by 1) and consecutive
+// ribs (same wall) are opposite parity -> opposite orientation, so their half-diagonals meet on
+// the shared fold line and form one full point (each rib holds half). Square: reach==setback
+// (45deg). Tapered: reach!=setback (the Wide/Narrow end-angles sum to 90deg). The exact reach /
+// setback / clearance / taper end-angle split / absolute phase are PROVISIONAL and paper-fold-
+// gated; tests assert the CONSTRUCTION RULE only, not ground-truth coordinates.
+// See docs .../plans/2026-07-05-round2-geometry-and-sheets.md.
 import { computeMetrics } from './metrics.js';
 import { computeFaceFoldWidths } from './tapered.js';
 
 // A rectangular ring has FOUR walls (two W, two H), traversed W, H, W, H.
 const WALL_FACES = ['W', 'H', 'W', 'H'];
 
-// PROVISIONAL clearance gap (mm) between a seated point and the bottom of the mating notch —
-// paper-fold-gated. The notch is cut this much DEEPER than the point reaches, so a nested point
-// never bottoms out / pierces the cloth (Mitchell). Small, non-negative, derived — NOT a UI param.
+// PROVISIONAL corner tip-clearance (mm), RESERVED / NOT YET WIRED. The contract's clearance
+// construction rule ("setback slightly deeper than the mating reach") is DEFERRED to the human
+// paper-fold gate: cornerReachSetback intentionally returns setback==reach on a square, so this
+// constant is NOT yet folded into setback. It is a derived quantity (NOT a UI param) kept
+// exported for consumers/tests; when the 1:1 paper fold pins the numbers, setback becomes
+// base - taper + CORNER_CLEARANCE (and the square assertion relaxes to setback>=reach). Until
+// then the geometry is construction-correct but the clearance is dimension-provisional.
 export const CORNER_CLEARANCE = 0.5;
-
-// Minimum positive margin (mm) kept between the two notch reflex vertices of a NARROW rib. The
-// natural notchDepth (reach + CORNER_CLEARANCE) is clamped to STRICTLY below width/2 by this much,
-// so on a tiny face (width < 2*notchDepth, sub-~43mm at defaults) the reflexes can never cross into
-// a self-intersecting bowtie — the notch just gets shallower (graceful degradation, not an error).
-// Inactive for normal faces (width >> 2*notchDepth), where the natural depth is always chosen.
-const NOTCH_CROSS_MARGIN = 1e-6;
 
 /**
  * Canonical per-(wall, rib) rib shapes — the SINGLE source of rib-shape truth.
@@ -44,7 +46,7 @@ const NOTCH_CROSS_MARGIN = 1e-6;
  * so wall w meets corner w on its right and corner (w+3)%4 on its left.
  *
  * cornerMode is exactly {clear (default) | interlock}. clear = plain inset rectangle. interlock =
- * wide point / narrow notch per parity (see cornerModeEnds/ribPolygon).
+ * a convex trapezoid whose orientation flips with parity (see cornerModeEnds/ribPolygon).
  *
  * @param {Object} params  Normalized or raw params (computeFaceFoldWidths normalizes).
  * @returns {import('./types.js').RibShape[]}
@@ -67,12 +69,20 @@ export function computeRibShapes(params) {
       const y0 = ribIndex * pitch;                  // SHARED datum — never shifted
       const y1 = y0 + rib;
       const depth = y1 - y0;
-      const reach = cornerPointReach(depth, ca);
-      // = reach + CORNER_CLEARANCE, but clamped STRICTLY below width/2 so the narrow-rib notch
-      // reflexes (x = notchDepth and x = width - notchDepth) can never cross on a tiny face.
-      const notchDepth = Math.min(cornerNotchDepth(reach), (width - NOTCH_CROSS_MARGIN) / 2);
+      // PROVISIONAL tapered asymmetry: half the local fold-width slope, so a Wide pleat's
+      // half-point reaches further and a Narrow pleat sets back more (the two corner end-angles
+      // sum to 90deg on a square, tilt on a taper). Zero for straight (all folds equal).
+      const prevW = foldWidths[Math.max(ribIndex - 1, 0)];
+      const nextW = foldWidths[Math.min(ribIndex + 1, ribCount - 1)];
+      const taper = (prevW - nextW) / 8;
+      let { reach, setback } = cornerReachSetback(depth, ca, taper);
+      // Degeneracy guards (paper-fold-gated, NOT the old notch clamp): the point fits inside the
+      // corner-fold gap (reach <= cornerAllowance) and the short cut-off edge stays non-negative
+      // (width >= 2*setback), both non-negative.
+      reach = Math.max(0, Math.min(reach, ca));
+      setback = Math.max(0, Math.min(setback, width / 2));
       const ends = cornerModeEnds(params.cornerMode ?? 'clear', wallIndex, ribIndex);
-      const points = ribPolygon(width, depth, ends, reach, notchDepth);
+      const points = ribPolygon(width, depth, ends, reach, setback);
       shapes.push({
         face,
         wallIndex,
@@ -88,90 +98,92 @@ export function computeRibShapes(params) {
 }
 
 /**
- * PROVISIONAL 45deg bevel reach for a WIDE rib point: reach = min(cornerAllowance, depth/2), so
- * the two bevel edges are exactly 45deg to the draw for the default rib and clamp to the corner
- * zone otherwise (apex ABUTs the corner line, never crosses it). Paper-fold-gated.
+ * PROVISIONAL half-point projection for an interlock trapezoid end. Returns BOTH the `reach` (how
+ * far the acute point projects PAST the clear-width edge, measured at a band edge) and the
+ * `setback` (how far the short cut-off edge insets at the OPPOSITE band edge). The base is the
+ * 45deg square value (reach==setback==min(cornerAllowance, depth/2), clamped so the point never
+ * overruns the corner-fold gap). A tapered corner splits the base by `taper`: the Wide end reaches
+ * `base+taper`, the Narrow end sets back to `base-taper`, so the two mating end-angles sum to
+ * 90deg. Replaces the old cornerPointReach mid-depth-apex semantics. NOTE: CORNER_CLEARANCE is
+ * intentionally NOT applied here (deferred to the paper-fold gate); setback==reach on a square.
+ * Paper-fold-gated.
  * @param {number} depth  rib depth along the draw (yBand.y1 - yBand.y0)
  * @param {number} cornerAllowance  per-side corner clear-zone width
- * @returns {number}
+ * @param {number} [taper=0]  tapered Wide/Narrow asymmetry (0 for a square)
+ * @returns {{reach:number, setback:number}}
  */
-export function cornerPointReach(depth, cornerAllowance) {
-  return Math.min(cornerAllowance, depth / 2);
+export function cornerReachSetback(depth, cornerAllowance, taper = 0) {
+  const base = Math.min(cornerAllowance, depth / 2);
+  return { reach: base + taper, setback: base - taper };
 }
 
 /**
- * PROVISIONAL notch depth for a NARROW rib end: reach + clearance, so the setback is DEEPER than
- * the mating point reaches by exactly the clearance gap (nominal seating: reach == notchDepth -
- * clearance). Paper-fold-gated.
- * @param {number} reach  from cornerPointReach()
- * @param {number} [clearance=CORNER_CLEARANCE]
- * @returns {number}
- */
-export function cornerNotchDepth(reach, clearance = CORNER_CLEARANCE) {
-  return reach + clearance;
-}
-
-/**
- * Interlock end roles for a rib. p = (wallIndex + ribIndex) % 2:
- *   even -> WIDE:   point at both corner ends.
- *   odd  -> NARROW: notch (setback) at both corner ends.
- * clear -> flat both ends (plain rectangle). Adjacent walls (wallIndex +-1) are opposite parity
- * at the same ribIndex, so every corner is exactly one point + one notch.
+ * Interlock trapezoid orientation for a rib. p = (wallIndex + ribIndex) % 2:
+ *   even -> 'leading' : long/pointing edge on y=0.
+ *   odd  -> 'rear'    : long/pointing edge on y=depth.
+ * Both corner ends of a rib share the SAME orientation (one trapezoid). clear -> null (plain
+ * inset rectangle). Adjacent walls (wallIndex +-1) are opposite parity at the same ribIndex, so
+ * every corner pairs a 'leading' half-diagonal with a 'rear' half-diagonal = one full point.
  * @param {'clear'|'interlock'} cornerMode
  * @param {number} wallIndex
  * @param {number} ribIndex
- * @returns {{leftKind:'flat'|'point'|'notch', rightKind:'flat'|'point'|'notch'}}
+ * @returns {{orientation:'leading'|'rear'|null}}
  */
 export function cornerModeEnds(cornerMode, wallIndex, ribIndex) {
   if (cornerMode === 'interlock') {
-    const wide = ((wallIndex + ribIndex) % 2) === 0;
-    const kind = wide ? 'point' : 'notch';
-    return { leftKind: kind, rightKind: kind };
+    const orientation = ((wallIndex + ribIndex) % 2) === 0 ? 'leading' : 'rear';
+    return { orientation };
   }
-  return { leftKind: 'flat', rightKind: 'flat' }; // clear
+  return { orientation: null }; // clear
 }
 
 /**
- * Canonical rib-local polygon, traced as a simple closed loop: top edge L->R, right end, bottom
- * edge R->L, left end. Each end is:
- *   'flat'  -> straight inset edge (no extra vertex)
- *   'point' -> convex apex reaching `reach` PAST the inset edge (x=width+reach / x=-reach), on the
- *              y-midline.
- *   'notch' -> concave reflex set BACK into the rib by `notchDepth` (x=width-notchDepth /
- *              x=notchDepth), on the y-midline.
- * A narrow (notch/notch) rib is a SIMPLE CONCAVE hexagon: reflex vertices at index 2 (right) and
- * index 5 (left). Consumers that assumed convex/monotone ribs (ladder traceColumn, STL cap fan)
- * must handle the concavity — see Tasks 3 and 4.
+ * Canonical rib-local polygon — a convex, CCW (positive-area), 4-vertex shape:
+ *   orientation null      -> plain inset rectangle [(0,0),(width,0),(width,depth),(0,depth)].
+ *   orientation 'leading' -> long edge on y=0:    [(-reach,0),(width+reach,0),(width-setback,depth),(setback,depth)].
+ *   orientation 'rear'    -> long edge on y=depth: [(setback,0),(width-setback,0),(width+reach,depth),(-reach,depth)].
+ * Each corner end is ONE straight diagonal (half a peak); the apex sits on a band edge (y in
+ * {0,depth}), never at mid-depth, and there is NO reflex/concave vertex. Convex, so consumers
+ * (ladder traceColumn, STL earClip cap, fabric footprints) flow through unchanged.
  * @param {number} width  inset clear width
  * @param {number} depth  rib depth along the draw
- * @param {{leftKind:'flat'|'point'|'notch', rightKind:'flat'|'point'|'notch'}} ends
- * @param {number} reach  convex apex reach (cornerPointReach)
- * @param {number} notchDepth  concave setback depth (cornerNotchDepth)
+ * @param {{orientation:'leading'|'rear'|null}} ends
+ * @param {number} reach  point projection past the clear edge
+ * @param {number} setback  short cut-off edge inset at the opposite edge
  * @returns {{x:number,y:number}[]}
  */
-export function ribPolygon(width, depth, ends, reach, notchDepth) {
-  const my = depth / 2; // apex/reflex sit on the rib y-midline (PROVISIONAL along-draw position)
-  const pts = [{ x: 0, y: 0 }, { x: width, y: 0 }];
-  if (ends.rightKind === 'point') {
-    pts.push({ x: width + reach, y: my });        // convex apex (outward)
-  } else if (ends.rightKind === 'notch') {
-    pts.push({ x: width - notchDepth, y: my });   // concave reflex (inward setback)
+export function ribPolygon(width, depth, ends, reach, setback) {
+  const orientation = ends.orientation ?? null;
+  if (orientation === 'leading') {
+    return [
+      { x: -reach, y: 0 },
+      { x: width + reach, y: 0 },
+      { x: width - setback, y: depth },
+      { x: setback, y: depth },
+    ];
   }
-  pts.push({ x: width, y: depth }, { x: 0, y: depth });
-  if (ends.leftKind === 'point') {
-    pts.push({ x: -reach, y: my });               // convex apex (outward)
-  } else if (ends.leftKind === 'notch') {
-    pts.push({ x: notchDepth, y: my });           // concave reflex (inward setback)
+  if (orientation === 'rear') {
+    return [
+      { x: setback, y: 0 },
+      { x: width - setback, y: 0 },
+      { x: width + reach, y: depth },
+      { x: -reach, y: depth },
+    ];
   }
-  return pts;
+  return [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: depth },
+    { x: 0, y: depth },
+  ];
 }
 
 /**
  * Half of a split-W rib footprint (the seam bisects the W wall, so each half runs from the seam
  * to ONE corner). The seam edge stays flat; only the OUTER end (toward the corner) carries the
- * canonical WIDE apex, positioned from the full rib's apex. In clear mode (or for a narrow rib,
- * which has no outward apex) this returns a width/2 rectangle. Used only by the fabric ENGRAVE
- * footprints; concave notch routing there is out of scope (Task 7 annotates these half-marks).
+ * canonical half-trapezoid DIAGONAL (reach at one band edge, setback at the other), read from the
+ * full rib's corner-side edge. In clear mode this returns a width/2 rectangle. Used by the fabric
+ * ENGRAVE footprints.
  * @param {import('./types.js').RibShape} shape
  * @param {'left'|'right'} outer  which end abuts the corner (right for col 0, left for col 4)
  * @returns {{x:number,y:number}[]}
@@ -179,16 +191,29 @@ export function ribPolygon(width, depth, ends, reach, notchDepth) {
 export function halfRibPolygon(shape, outer) {
   const depth = shape.yBand.y1 - shape.yBand.y0;
   const hw = shape.width / 2;
-  const rightApex = shape.points.find((p) => p.x > shape.width);
-  const leftApex = shape.points.find((p) => p.x < 0);
+  // Read the full rib's left/right x at each band edge (2 vertices at y=0, 2 at y=depth).
+  const y0 = shape.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x);
+  const yd = shape.points.filter((p) => Math.abs(p.y - depth) < 1e-6).map((p) => p.x);
+  const leftTop = Math.min(...y0);
+  const rightTop = Math.max(...y0);
+  const leftBot = Math.min(...yd);
+  const rightBot = Math.max(...yd);
   if (outer === 'right') {
-    const pts = [{ x: 0, y: 0 }, { x: hw, y: 0 }];
-    if (rightApex) pts.push({ x: hw + (rightApex.x - shape.width), y: depth / 2 }); // outer apex
-    pts.push({ x: hw, y: depth }, { x: 0, y: depth });
-    return pts;
+    // corner on the RIGHT (x=hw), seam flat on the LEFT (x=0); map the full clear edge x=width
+    // onto the half edge x=hw so the corner-side diagonal is carried at half scale.
+    return [
+      { x: 0, y: 0 },
+      { x: hw + (rightTop - shape.width), y: 0 },
+      { x: hw + (rightBot - shape.width), y: depth },
+      { x: 0, y: depth },
+    ];
   }
-  // outer === 'left': corner at x=0, seam at x=hw
-  const pts = [{ x: 0, y: 0 }, { x: hw, y: 0 }, { x: hw, y: depth }, { x: 0, y: depth }];
-  if (leftApex) pts.splice(4, 0, { x: leftApex.x, y: depth / 2 }); // outer apex (leftApex.x < 0)
-  return pts;
+  // outer === 'left': corner on the LEFT (x=0), seam flat on the RIGHT (x=hw); the full clear
+  // edge x=0 maps to the half edge x=0, so the left diagonal x-values carry directly.
+  return [
+    { x: leftTop, y: 0 },
+    { x: hw, y: 0 },
+    { x: hw, y: depth },
+    { x: leftBot, y: depth },
+  ];
 }

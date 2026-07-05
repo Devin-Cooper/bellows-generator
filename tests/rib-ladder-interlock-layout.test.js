@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { renderRibLadderSVG, offsetEdges } from '../src/render/svg.js';
 import { computeMetrics } from '../src/geometry/metrics.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
-import { cornerPointReach } from '../src/geometry/ribShapes.js';
+import { cornerReachSetback } from '../src/geometry/ribShapes.js';
 
 function ladder(overrides = {}) {
   const params = normalizeParams({ ...DEFAULT_PARAMS, ...overrides });
@@ -64,23 +64,37 @@ describe('renderRibLadderSVG — interlock layout is on-sheet & un-garbled', () 
     }
   });
 
-  it('(2) the MIDDLE wide rib keeps a 45deg bevel (per-edge normal, not tilted by the bbox offset)', () => {
+  it('(2) an interlock apex sits on a BAND EDGE (fold line), NOT the rib mid-height, with a ~45deg diagonal', () => {
     const { svg, params, metrics } = ladder({ frontW: 160, frontH: 115, cornerMode: 'interlock' });
     const width = 160 - 2 * params.cornerAllowance;
-    const reach = cornerPointReach(params.rib, params.cornerAllowance);
+    const { reach } = cornerReachSetback(params.rib, params.cornerAllowance);
     const colX0 = 5 + params.kerf / 2 + reach; // margin + kerf/2 + leftPad(=reach)
-    const midY = params.endMargin + ((metrics.ribCount - 1) * metrics.pitch + params.rib) / 2;
     const wCol = ladderPaths(svg).find((a) => a['data-face'] === 'W');
     const verts = outerVerts(wCol.d);
-    // A right apex pokes ~reach past the right rail; grown rail corners are only ~kerf/2 past it.
+    // The reach apexes poke ~reach past the right rail; grown rail corners are only ~kerf/2 past it.
     const apexes = verts.map((p, i) => ({ p, i })).filter(({ p }) => p.x > colX0 + width + 1);
     expect(apexes.length).toBeGreaterThan(0);
-    const mid = apexes.sort((u, v) => Math.abs(u.p.y - midY) - Math.abs(v.p.y - midY))[0];
-    expect(Math.abs(mid.p.y - midY)).toBeLessThan(1e-6);        // it really is the centre-line apex
-    const prev = verts[(mid.i - 1 + verts.length) % verts.length];
-    const next = verts[(mid.i + 1) % verts.length];
-    expect(angleFromVertical(mid.p, prev)).toBeCloseTo(45, 1);  // lower bevel ~45deg
-    expect(angleFromVertical(mid.p, next)).toBeCloseTo(45, 1);  // upper bevel ~45deg
+    // every band edge (fold line) of the column, and the corresponding mid-band lines
+    const datum = params.endMargin;
+    const bandEdges = [];
+    const midBands = [];
+    for (let r = 0; r < metrics.ribCount; r++) {
+      const yTop = datum + r * metrics.pitch;
+      bandEdges.push(yTop, yTop + params.rib);
+      midBands.push(yTop + params.rib / 2);
+    }
+    for (const { p, i } of apexes) {
+      const dEdge = Math.min(...bandEdges.map((e) => Math.abs(p.y - e)));
+      const dMid = Math.min(...midBands.map((m) => Math.abs(p.y - m)));
+      expect(dEdge).toBeLessThan(0.2);                       // apex ON a fold-line band edge
+      expect(dMid).toBeGreaterThan(params.rib / 2 - 0.5);    // NOT at the rib mid-height (old bug)
+      // the diagonal leaving the apex toward the setback is ~45deg from the draw axis
+      const prev = verts[(i - 1 + verts.length) % verts.length];
+      const next = verts[(i + 1) % verts.length];
+      const diag = [angleFromVertical(p, prev), angleFromVertical(p, next)]
+        .sort((a, b) => Math.abs(a - 45) - Math.abs(b - 45))[0];
+      expect(diag).toBeCloseTo(45, 0);
+    }
   });
 
   it('(3) clear mode stays GEOMETRICALLY identical: no zero-length vertices, same rails/bbox', () => {

@@ -3,34 +3,46 @@ import { computeRibShapes } from '../src/geometry/ribShapes.js';
 import { DEFAULT_PARAMS } from '../src/params.js';
 
 // The old 'alternating' mode is REMOVED and migrated to 'interlock'. Interlock keeps the
-// alternation idea but pairs it with a complementary notch: adjacent walls at the same band
-// carry OPPOSITE roles (one points, one is set back) so the ring nests corner-to-corner.
-const isWide = (s) => s.points.some((p) => p.x > s.width || p.x < 0);
-const isNarrow = (s) => s.points.some((p) => p.x > 0 && p.x < s.width);
+// alternation idea but as a TRAPEZOID orientation flip: adjacent walls at the same band (and
+// consecutive ribs on one wall) carry OPPOSITE orientation ('leading' vs 'rear') so their
+// half-diagonals meet on the shared fold line and nest corner-to-corner.
+const depthOf = (s) => s.yBand.y1 - s.yBand.y0;
+const isTrapezoid = (s) => s.points.some((p) => p.x < -1e-9 || p.x > s.width + 1e-9);
+const orientationOf = (s) => {
+  const y0min = Math.min(...s.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x));
+  return y0min < -1e-6 ? 'leading' : 'rear';
+};
 
-describe('computeRibShapes cornerMode=interlock — wide/narrow alternation', () => {
-  it('every interlock rib is either wide (point) or narrow (notch) — exactly one role, never plain', () => {
+describe('computeRibShapes cornerMode=interlock — orientation alternation', () => {
+  it('every interlock rib is a trapezoid (projects a half-point) with a definite orientation', () => {
     const shapes = computeRibShapes({ ...DEFAULT_PARAMS, cornerMode: 'interlock' });
     for (const s of shapes) {
-      expect(isWide(s) !== isNarrow(s)).toBe(true);
+      expect(isTrapezoid(s)).toBe(true);
+      expect(['leading', 'rear']).toContain(orientationOf(s));
     }
   });
 
-  it('adjacent walls at the same pleat carry opposite treatment (point vs notch)', () => {
+  it('adjacent walls at the same pleat carry opposite orientation (leading vs rear)', () => {
     const shapes = computeRibShapes({ ...DEFAULT_PARAMS, cornerMode: 'interlock' });
     const rib0 = shapes.filter((s) => s.ribIndex === 0).sort((a, b) => a.wallIndex - b.wallIndex);
     expect(rib0.length).toBe(4);
     for (let i = 1; i < rib0.length; i++) {
-      expect(isWide(rib0[i])).toBe(!isWide(rib0[i - 1]));
+      expect(orientationOf(rib0[i])).not.toBe(orientationOf(rib0[i - 1]));
     }
   });
 
-  it('roughly half the ribs point and half are set back (balanced corner pack, no plain ribs)', () => {
+  it('a single wall alternates orientation down the draw (no plain ribs)', () => {
     const shapes = computeRibShapes({ ...DEFAULT_PARAMS, cornerMode: 'interlock' });
-    const wide = shapes.filter(isWide).length;
-    const narrow = shapes.filter(isNarrow).length;
-    expect(wide).toBeGreaterThan(0);
-    expect(narrow).toBeGreaterThan(0);
-    expect(wide + narrow).toBe(shapes.length);
+    const wall0 = shapes.filter((s) => s.wallIndex === 0).sort((a, b) => a.ribIndex - b.ribIndex);
+    expect(wall0.length).toBeGreaterThan(1);
+    for (let i = 1; i < wall0.length; i++) {
+      expect(orientationOf(wall0[i])).toBe(orientationOf(wall0[i - 1]) === 'leading' ? 'rear' : 'leading');
+    }
+    // roughly balanced across the whole ring: both orientations appear
+    const lead = shapes.filter((s) => orientationOf(s) === 'leading').length;
+    const rear = shapes.filter((s) => orientationOf(s) === 'rear').length;
+    expect(lead).toBeGreaterThan(0);
+    expect(rear).toBeGreaterThan(0);
+    expect(lead + rear).toBe(shapes.length);
   });
 });
