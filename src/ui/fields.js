@@ -129,6 +129,17 @@ export const FIELDS = {
     unit: 'mm',
     hint: 'Cutting-bed Y extent; rib lattices split into bed-height segments.',
   },
+  cornerCombs: {
+    label: 'Corner combs',
+    unit: '',
+    hint: 'Optional per-corner comb spacers on the laser master sheets that hold the corner gap and fold with the bellows.',
+    kind: 'bool',
+  },
+  combToothWidth: {
+    label: 'Comb tooth width',
+    unit: 'mm',
+    hint: 'Width of each comb tooth along the pleat; clamped to at most the rib width.',
+  },
 };
 
 export function fieldMeta(key) {
