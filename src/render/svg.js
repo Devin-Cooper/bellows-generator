@@ -1,5 +1,9 @@
 import { LAYER, LAYER_COLORS } from '../constants.js';
 import { computeWallRibLayout } from '../geometry/wallRibLayout.js';
+// Share the breakaway-tab X positions with the 3D STL (export/stl.js): the laser connector tabs and
+// the printed breakaway bridges must land at the SAME inset positions. This import is acyclic —
+// stl.js does not import svg.js — so it is the lowest-churn way to keep the two in lockstep.
+import { bridgeTabXs } from '../export/stl.js';
 
 const LAYER_ORDER = [
   LAYER.CUT,
@@ -292,10 +296,12 @@ export function offsetEdges(points, delta) {
  * bottom band edge (y=depth) — a clear rectangle (straight rails) OR an interlock TRAPEZOID (a
  * single diagonal per rib end, its point on a band edge). The tracer reads the left/right x at
  * each band edge and stitches them into ONE connected loop: down the left side rib-by-rib, then
- * up the right side. Outer grown OUTWARD by kerf/2; one middle connector-tab notch per gap, its
- * left/right edges FLOORED/CAPPED to the clear width [0, width] (then inset by tabW), so the
- * snap-apart tabs always land on the CLEAR edge — never on an OUTWARD interlock point tip
- * (x=-reach / x=width+reach) nor outside the material, and the inward-gap setback still leaves a tab.
+ * up the right side. Outer grown OUTWARD by kerf/2; per gap the connector tabs sit at the SHARED
+ * bridgeTabXs positions (same as the 3D STL breakaway bridges): TWO tabs INSET by cornerAllowance
+ * from the clamped clear-span edges (a small face collapses to ONE centred tab). The gap is cut
+ * EVERYWHERE except a tabW-wide strip on each tab centre, so the ribs join ONLY by the inset tabs
+ * and the rib ENDS are fully cut — off the OUTWARD interlock point tips (x=-reach / x=width+reach)
+ * and off the corner-fold zone, matching the STL. The clamped span still leaves a tab on setbacks.
  */
 function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
@@ -335,28 +341,44 @@ function traceColumn(ribs, colX0, datum, params) {
   const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
   for (let i = 0; i < N - 1; i++) {
-    // Left/right boundary of the tab notch at the gap between rib i (bottom) and rib i+1 (top),
-    // FLOORED/CAPPED to the clear width [0, clearW] and then max'd/min'd with the adjacent rib edges.
+    // Clamped clear span of the gap between rib i (bottom) and rib i+1 (top): FLOORED/CAPPED to the
+    // clear width [0, clearW] and then max'd/min'd with the adjacent rib edges.
     //   Clear rib:                        leftEdge=0,       rightEdge=clearW.
     //   Interlock INWARD gap  (leading bottom / rear top): leftEdge=setback, rightEdge=clearW-setback
     //     — the max(0,..)/min(clearW,..) keeps the setback so a deep setback still leaves a tab.
     //   Interlock OUTWARD gap (rear bottom / leading top): both adjacent edges are the WIDE base
     //     (-reach / clearW+reach = the POINT TIPS). Flooring at the RAW outer boundary would put the
     //     tab at x≈-reach / x≈clearW+reach — ON the interlock point, `reach` mm outside the clear
-    //     width. The [0, clearW] floor/cap pins those tabs onto the clear edge, off the point.
+    //     width. The [0, clearW] floor/cap pins the span onto the clear edge, off the point.
     const clearW = Math.min(rows[i].width, rows[i + 1].width);
     const leftEdge = Math.max(0, rows[i].leftBot, rows[i + 1].leftTop);
     const rightEdge = Math.min(clearW, rows[i].rightBot, rows[i + 1].rightTop);
-    const nl = colX0 + leftEdge + tabW;
-    const nr = colX0 + rightEdge - tabW;
-    if (nr <= nl) continue;
-    const notch = [
-      { x: nl, y: rows[i].yBot },
-      { x: nr, y: rows[i].yBot },
-      { x: nr, y: rows[i + 1].yTop },
-      { x: nl, y: rows[i + 1].yTop },
-    ];
-    subs.push(pathData(offsetEdges(notch, -half), true));
+    const span = rightEdge - leftEdge;
+    if (span <= 0) continue;
+    // Tab centres INSET by cornerAllowance from each clamped clear edge — the SAME positions the 3D
+    // STL breakaway bridges use (bridgeTabXs): TWO tabs normally, ONE centred tab on a small face.
+    const centres = bridgeTabXs(span, (leftEdge + rightEdge) / 2, params.cornerAllowance).sort(
+      (a, b) => a - b
+    );
+    // CUT the gap across [leftEdge, rightEdge] EVERYWHERE except a tabW-wide strip on each tab
+    // centre: the cut sub-rectangles are the COMPLEMENT of those strips. `bounds` interleaves the
+    // span ends with each strip's [centre-tabW/2, centre+tabW/2], so successive pairs are the cuts:
+    // [leftEdge, c1-tabW/2], [c1+tabW/2, c2-tabW/2], [c2+tabW/2, rightEdge] (or two spans, 1 tab).
+    const bounds = [leftEdge, ...centres.flatMap((c) => [c - tabW / 2, c + tabW / 2]), rightEdge];
+    for (let k = 0; k < bounds.length; k += 2) {
+      const a = Math.max(leftEdge, bounds[k]);
+      const b = Math.min(rightEdge, bounds[k + 1]);
+      if (b - a <= 0) continue; // strips at/over the ends collapse the neighbouring cut to nothing
+      const nl = colX0 + a;
+      const nr = colX0 + b;
+      const notch = [
+        { x: nl, y: rows[i].yBot },
+        { x: nr, y: rows[i].yBot },
+        { x: nr, y: rows[i + 1].yTop },
+        { x: nl, y: rows[i + 1].yTop },
+      ];
+      subs.push(pathData(offsetEdges(notch, -half), true));
+    }
   }
   return subs.join(' ');
 }

@@ -36,27 +36,41 @@ function outerBBox(d) {
 }
 
 describe('renderRibLadderSVG — connected outline (P0)', () => {
-  it('cuts each column as ONE connected path, not loose rects', () => {
+  it('cuts each column as ONE connected path with inset connector tabs, not loose rects', () => {
     const { svg, metrics, params } = ladder({ frontW: 160, frontH: 115 });
     expect(svg.includes('data-role="rib"')).toBe(false); // no confetti rib rects
     expect(svg.includes('data-role="tab"')).toBe(false);  // no confetti tab rects
     expect(ladderPaths(svg, 'W').length).toBe(2);
     expect(ladderPaths(svg, 'H').length).toBe(2);
-    // outer boundary + (ribCount-1) middle notches = ribCount subpaths in the single path
+    // MIGRATED (inset tabs): each gap is now cut into 3 notches straddling the 2 inset tabs, so the
+    // single path holds outer boundary + 3*(ribCount-1) notch subpaths (was ribCount before).
     const dW = ladderPaths(svg, 'W')[0].d;
-    expect((dW.match(/M /g) || []).length).toBe(metrics.ribCount);
-    // the notches leave connector tabs: each notch is narrower than the rib band
-    const subs = dW.split('Z').filter((s) => s.trim().length);
+    expect((dW.match(/M /g) || []).length).toBe(1 + 3 * (metrics.ribCount - 1));
     const bb = outerBBox(dW);
     const outerW = bb.maxX - bb.minX;
-    const notch = subs[1].match(/-?[\d.]+/g).map(Number);
-    const notchXs = notch.filter((_, i) => i % 2 === 0);
-    const notchW = Math.max(...notchXs) - Math.min(...notchXs);
-    expect(notchW).toBeLessThan(outerW); // tabs remain on both ends
-    // pin the connector-tab width exactly: each rail must survive at tabW + kerf
-    const tabW = Math.min(2, params.cornerAllowance);
-    expect(Math.min(...notchXs) - bb.minX).toBeCloseTo(tabW + params.kerf, 4);  // left tab
-    expect(bb.maxX - Math.max(...notchXs)).toBeCloseTo(tabW + params.kerf, 4);  // right tab
+    const half = params.kerf / 2;
+    const ca = params.cornerAllowance;               // 15
+    const tabW = Math.min(2, ca);                    // 2 — the OLD edge-rail width
+    const leftClear = bb.minX + half;                // kerf-grown rect -> clear edge is inset kerf/2
+    const rightClear = bb.maxX - half;
+    // gap 0 -> subs[1..3] = left / middle / right cut notches; the tabs sit in the gaps between them
+    const subX = (s) => {
+      const xs = s.match(/-?[\d.]+/g).map(Number).filter((_, i) => i % 2 === 0);
+      return [Math.min(...xs), Math.max(...xs)];
+    };
+    const subs = dW.split('Z').map((s) => s.trim()).filter(Boolean);
+    const n1 = subX(subs[1]), n2 = subX(subs[2]), n3 = subX(subs[3]);
+    expect(n2[1] - n2[0]).toBeLessThan(outerW);      // each notch narrower than the band -> tabs remain
+    const tabL = (n1[1] + n2[0]) / 2;                // between left & middle cuts
+    const tabR = (n2[1] + n3[0]) / 2;                // between middle & right cuts
+    // tabs are INSET by cornerAllowance (match bridgeTabXs), NOT the old ~tabW rails at the edges
+    expect(tabL).toBeCloseTo(leftClear + ca, 3);
+    expect(tabR).toBeCloseTo(rightClear - ca, 3);
+    expect(tabL).not.toBeCloseTo(leftClear + tabW, 1);
+    expect(tabR).not.toBeCloseTo(rightClear - tabW, 1);
+    // ends fully cut: the outermost notches reach the clear edges (only a ~kerf/2 sliver remains)
+    expect(n1[0] - leftClear).toBeLessThan(0.2 + half);
+    expect(rightClear - n3[1]).toBeLessThan(0.2 + half);
   });
 
   it('emits BOTH W and H rib families (P5)', () => {
@@ -94,8 +108,13 @@ describe('renderRibLadderSVG — connected outline (P0)', () => {
     const subs = dW.split('Z').filter((s) => s.trim().length);
     const notch = subs[1].match(/-?[\d.]+/g).map(Number);
     const notchXs = notch.filter((_, i) => i % 2 === 0);
-    // floor(max(1, min(2, 0))) = 1, so each rail must be 1 + kerf
-    expect(Math.min(...notchXs) - bb.minX).toBeCloseTo(1 + params.kerf, 4);  // left tab floored
-    expect(bb.maxX - Math.max(...notchXs)).toBeCloseTo(1 + params.kerf, 4);  // right tab floored
+    // MIGRATED (inset tabs): at ca=0 bridgeTabXs puts the two tabs AT the clear edges, so each gap is
+    // one central cut notch that leaves a ~tabW/2 (0.5mm, the floored 1mm split two ways) rail at each
+    // end. tabW = max(1, min(2, 0)) = 1, so each edge rail is tabW/2 + kerf and the lattice never severs.
+    const tabW = Math.max(1, Math.min(2, params.cornerAllowance)); // = 1
+    expect(Math.min(...notchXs) - bb.minX).toBeCloseTo(tabW / 2 + params.kerf, 4);  // left edge tab
+    expect(bb.maxX - Math.max(...notchXs)).toBeCloseTo(tabW / 2 + params.kerf, 4);  // right edge tab
+    expect(Math.min(...notchXs)).toBeGreaterThan(bb.minX + 1e-6);   // material remains at the left end
+    expect(bb.maxX).toBeGreaterThan(Math.max(...notchXs) + 1e-6);   // ...and the right end
   });
 });
