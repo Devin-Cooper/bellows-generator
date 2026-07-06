@@ -71,9 +71,11 @@ describe('renderPatternSheets — bed-sized fold-pattern master sheets', () => {
   const model = buildPatternModel({ ...DEFAULT_PARAMS });
   const sheets = renderPatternSheets(model, { ...DEFAULT_PARAMS });
 
-  it('splits the drawing into one SVG per bed tile', () => {
-    const plan = planBedTiles(model.bounds, DEFAULT_PARAMS);
-    expect(sheets.length).toBe(plan.count);
+  it('splits the drawing into one SVG per bed tile (rotated orientation at defaults)', () => {
+    // the default 610x430 pattern auto-rotates: swapped {w:430,h:610} tiles to 2 (< un-rotated 4)
+    const rotatedPlan = planBedTiles({ w: model.bounds.h, h: model.bounds.w }, DEFAULT_PARAMS);
+    expect(rotatedPlan.count).toBeLessThan(planBedTiles(model.bounds, DEFAULT_PARAMS).count);
+    expect(sheets.length).toBe(rotatedPlan.count);
   });
 
   it('the default (flatWidth 610 > bedW 609.6) overflows to >= 2 sheets', () => {
@@ -89,8 +91,9 @@ describe('renderPatternSheets — bed-sized fold-pattern master sheets', () => {
     }
   });
 
-  it('crops each sheet to the bed rect and translates content by the tile origin', () => {
-    const plan = planBedTiles(model.bounds, DEFAULT_PARAMS);
+  it('crops each sheet to the bed rect and translates content by the (rotated) tile origin', () => {
+    // defaults rotate, so the per-tile offsets come from the swapped-bounds plan
+    const plan = planBedTiles({ w: model.bounds.h, h: model.bounds.w }, DEFAULT_PARAMS);
     sheets.forEach((svg, i) => {
       const t = plan.tiles[i];
       expect(svg).toContain('clip-path="url(#bed)"');
@@ -129,5 +132,99 @@ describe('downloadPatternSheets', () => {
       'bellows-fold-pattern-sheet-2.svg',
       'bellows-fold-pattern-sheet-3.svg',
     ]);
+  });
+});
+
+// --- helpers for the auto-rotate assertions ---------------------------------
+// Every transform="" on a fold-pattern sheet lives on the content <g> wrappers (the calibration
+// and legend groups carry none), listed in document (outermost-first) order.
+function contentTransforms(svg) {
+  const out = [];
+  const re = /transform="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(svg)) !== null) {
+    const tre = /(translate|rotate)\(([^)]*)\)/g;
+    let t;
+    while ((t = tre.exec(m[1])) !== null) {
+      out.push({ op: t[1], args: t[2].split(/[\s,]+/).filter(Boolean).map(Number) });
+    }
+  }
+  return out;
+}
+// Map a flat point through the nested content transforms (innermost / right-most applied first).
+function applyContent(transforms, pt) {
+  let { x, y } = pt;
+  for (let i = transforms.length - 1; i >= 0; i--) {
+    const t = transforms[i];
+    if (t.op === 'translate') {
+      x += t.args[0];
+      y += t.args[1] || 0;
+    } else {
+      const a = (t.args[0] * Math.PI) / 180;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      const nx = x * c - y * s;
+      const ny = x * s + y * c;
+      x = nx;
+      y = ny;
+    }
+  }
+  return { x, y };
+}
+
+describe('renderPatternSheets — whole-sheet 0/90 auto-rotation', () => {
+  const model = buildPatternModel({ ...DEFAULT_PARAMS });
+  const sheets = renderPatternSheets(model, { ...DEFAULT_PARAMS });
+
+  it('rotates the default pattern (610x430) to 2 bed sheets instead of 4', () => {
+    // un-rotated tiles 2x2 = 4; swapped {w:430,h:610} tiles 1x2 = 2 -> rotation wins
+    expect(planBedTiles(model.bounds, DEFAULT_PARAMS).count).toBe(4);
+    expect(
+      planBedTiles({ w: model.bounds.h, h: model.bounds.w }, DEFAULT_PARAMS).count
+    ).toBe(2);
+    expect(sheets.length).toBe(2);
+  });
+
+  it('wraps content in translate(H,0) rotate(90) — the compensating translate, not a bare rotate', () => {
+    for (const svg of sheets) {
+      expect(svg).toContain(`translate(${fmtNum(model.bounds.h)},0) rotate(90)`);
+    }
+  });
+
+  it('lands the rotated content on-bed with no negative coordinates (sheet 0)', () => {
+    const W = model.bounds.w;
+    const H = model.bounds.h;
+    const T = contentTransforms(sheets[0]); // sheet 0 has no per-tile offset (translate 0,0)
+    const corners = [[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => applyContent(T, { x, y }));
+    const xs = corners.map((c) => c.x);
+    const ys = corners.map((c) => c.y);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(-1e-6); // a bare rotate(90) => X in [-H,0]
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(-1e-6);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(H + 1e-6); // re-seated into rotated frame [0,H]
+  });
+
+  it('keeps clipPath#bed untransformed and calibration + legend outside the rotated group', () => {
+    for (const svg of sheets) {
+      // the clip group itself carries no transform (rotate/translate sit on the inner groups)
+      expect(svg).toContain('<g clip-path="url(#bed)"><g transform="translate(');
+      // calibration + assembly legend are emitted after the content group closes -> upright
+      const tail = svg.slice(svg.lastIndexOf('</g></g>'));
+      expect(tail).toContain('data-role="calibration"');
+      expect(tail).toContain('longest first'); // Task-2 assembly legend, sheet-level + upright
+    }
+  });
+
+  it('does NOT rotate a pattern that fits un-rotated in fewer-or-equal tiles (tie -> upright)', () => {
+    const small = buildPatternModel({
+      ...DEFAULT_PARAMS,
+      maxDraw: 100,
+      frontW: 100, frontH: 80, rearW: 100, rearH: 80,
+    });
+    // both orientations need a single bed tile -> tie -> keep un-rotated
+    expect(planBedTiles(small.bounds, DEFAULT_PARAMS).count).toBe(1);
+    expect(planBedTiles({ w: small.bounds.h, h: small.bounds.w }, DEFAULT_PARAMS).count).toBe(1);
+    const smallSheets = renderPatternSheets(small, { ...DEFAULT_PARAMS });
+    expect(smallSheets.length).toBe(1);
+    for (const svg of smallSheets) expect(svg).not.toContain('rotate(90)');
   });
 });

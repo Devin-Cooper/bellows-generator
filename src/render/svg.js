@@ -176,7 +176,19 @@ export function planBedTiles(bounds, params) {
  * @returns {string[]} one SVG string per bed sheet
  */
 export function renderPatternSheets(model, params) {
-  const plan = planBedTiles(model.bounds, params);
+  // Whole-sheet 0/90 auto-rotation. Tile the pattern in BOTH orientations and keep the one that
+  // needs FEWER bed sheets (tie -> un-rotated). Rotation is a pure SVG transform on the content
+  // group below; the flat geometry coordinates are never rotated. SVG rotate(90) is CW and maps
+  // (x,y)->(-y,x), so a flat x in [0,W] lands in X in [-H,0]; translate(H,0) (H=model.bounds.h)
+  // re-seats it into the rotated frame [0,H]x[0,W]. The per-tile (-t.x,-t.y) offset lives in that
+  // rotated frame and stays the OUTER group, applied AFTER the rotation.
+  const upright = planBedTiles(model.bounds, params);
+  const swapped = planBedTiles({ w: model.bounds.h, h: model.bounds.w }, params);
+  const rotated = swapped.count < upright.count;
+  const plan = rotated ? swapped : upright;
+  const H = model.bounds.h;
+  const rotOpen = rotated ? `<g transform="translate(${fmt(H)},0) rotate(90)">` : '';
+  const rotClose = rotated ? '</g>' : '';
   const groups = patternLayerGroups(model, params);
   const bedW = params.bedW;
   const bedH = params.bedH;
@@ -206,10 +218,10 @@ export function renderPatternSheets(model, params) {
       `width="${fmt(bedW)}mm" height="${fmt(bedH)}mm" viewBox="0 0 ${fmt(bedW)} ${fmt(bedH)}">\n` +
       `<defs><clipPath id="bed"><rect x="0" y="0" ` +
       `width="${fmt(bedW)}" height="${fmt(bedH)}"/></clipPath></defs>\n` +
-      `<g clip-path="url(#bed)"><g transform="translate(${fmt(-t.x)},${fmt(-t.y)})">\n` +
+      `<g clip-path="url(#bed)"><g transform="translate(${fmt(-t.x)},${fmt(-t.y)})">${rotOpen}\n` +
       groups +
       `\n` + gapAnno +
-      `\n</g></g>\n` +
+      `\n${rotClose}</g></g>\n` +
       calGroup +
       assemblyLegendGroup() +
       `\n</svg>`
