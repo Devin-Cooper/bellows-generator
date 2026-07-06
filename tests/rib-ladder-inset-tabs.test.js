@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { renderRibLadderSVG } from '../src/render/svg.js';
 import { bridgeTabXs } from '../src/export/stl.js';
 import { computeMetrics } from '../src/geometry/metrics.js';
+import { cornerReachSetback } from '../src/geometry/ribShapes.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
 
 function ladder(overrides = {}) {
@@ -134,24 +135,61 @@ describe('rib ladder — connector tabs are INSET by cornerAllowance (match the 
     }
   });
 
-  it('interlock: tabs stay within the clamped clear span and match bridgeTabXs on that span', () => {
+  it('interlock: the cut reaches the point tips — NO uncut web joins ribs at the mountain-fold points', () => {
+    // Regression for the point-web bug: on an OUTWARD interlock gap both facing band edges are the
+    // WIDE base, so the outer blob fills the gap out to the point tips (x=-reach / x=width+reach). If
+    // the gap cut is clamped to the clear width [0, clearW] (as it was), the triangular tip regions
+    // OUTSIDE the clear width stay uncut and WELD the ribs together right at the fold points. The cut
+    // must span the FULL gap extent, so its outer edges reach the outer boundary (within a kerf half).
+    const { svg, params } = ladder({ frontW: 160, frontH: 115, cornerMode: 'interlock' });
+    const half = params.kerf / 2;
+    const reach = cornerReachSetback(params.rib, params.cornerAllowance, 0).reach;
+    expect(reach).toBeGreaterThan(1); // the bug only exists when the points actually protrude
+    const subs = subpaths(ladderD(svg, 'W'));
+    const [oMin, oMax] = xExtent(subs[0]);
+    const notches = subs.slice(1);
+    const nMin = Math.min(...notches.map((n) => Math.min(...n.map((p) => p.x))));
+    const nMax = Math.max(...notches.map((n) => Math.max(...n.map((p) => p.x))));
+    // Some outward gap's cut must reach each point tip: leftmost cut ≈ outer left, rightmost ≈ outer
+    // right (only the kerf-half offset between them). A residual ≈ reach would be the uncut web.
+    expect(nMin - (oMin + half)).toBeLessThan(0.3); // no left-tip web (was ≈ reach)
+    expect(oMax - half - nMax).toBeLessThan(0.3); // no right-tip web (was ≈ reach)
+  });
+
+  it('interlock: tabs sit INSET from the CLEAR edges (off the points), matching bridgeTabXs', () => {
     const { svg, params } = ladder({ frontW: 160, frontH: 115, cornerMode: 'interlock' });
     const half = params.kerf / 2;
     const ca = params.cornerAllowance;
+    const reach = cornerReachSetback(params.rib, params.cornerAllowance, 0).reach;
     const subs = subpaths(ladderD(svg, 'W'));
     const gaps = notchesByGap(subs);
     expect(gaps.length).toBeGreaterThan(0);
-    for (const notchIvals of gaps) {
-      // Reconstruct the clamped clear span for THIS gap from its own cut notches: the span runs from
-      // the leftmost notch's left edge to the rightmost notch's right edge (ends are fully cut), each
-      // pulled back out by the kerf half so we recover the pre-offset clamped span.
-      const lo = Math.min(...notchIvals.map(([a]) => a)) - half;
-      const hi = Math.max(...notchIvals.map(([, b]) => b)) + half;
-      const span = hi - lo;
-      const tabs = uncutTabs(notchIvals, lo, hi, 0.5).map((t) => t.c).sort((a, b) => a - b);
-      const expected = bridgeTabXs(span, (lo + hi) / 2, ca);
+    // Per-gap cut extents (pre-offset), reconstructed from each gap's own notch rectangles.
+    const extents = gaps.map((iv) => ({
+      iv,
+      gLo: Math.min(...iv.map(([a]) => a)) - half,
+      gHi: Math.max(...iv.map(([, b]) => b)) + half,
+    }));
+    // The clear edges come miter-free from the WIDEST (outward) gap: its cut reaches the point tips
+    // at colX0-reach / colX0+width+reach, so leftClear = gLo+reach, rightClear = gHi-reach. (Deriving
+    // them from the OUTER boundary would be off by the acute-point miter overshoot.)
+    const widest = extents.reduce((m, e) => (e.gHi - e.gLo > m.gHi - m.gLo ? e : m));
+    const leftClear = widest.gLo + reach;
+    const rightClear = widest.gHi - reach;
+    for (const { iv, gLo, gHi } of extents) {
+      // Tab span = the clear overlap clamped to this gap's extent (exactly the fixed code's tabLo/
+      // tabHi), then inset by cornerAllowance via bridgeTabXs.
+      const tabLo = Math.max(leftClear, gLo);
+      const tabHi = Math.min(rightClear, gHi);
+      const expected = bridgeTabXs(tabHi - tabLo, (tabLo + tabHi) / 2, ca);
+      const tabs = uncutTabs(iv, gLo, gHi, 0.5).map((t) => t.c).sort((a, b) => a - b);
       expect(tabs.length).toBe(expected.length);
-      for (let k = 0; k < tabs.length; k++) expect(tabs[k]).toBeCloseTo(expected[k], 3);
+      for (let k = 0; k < tabs.length; k++) expect(tabs[k]).toBeCloseTo(expected[k], 1);
+      // Every tab is inside the clear span — never on a point tip (which sit reach beyond the edges).
+      for (const t of tabs) {
+        expect(t).toBeGreaterThan(leftClear - 1e-6);
+        expect(t).toBeLessThan(rightClear + 1e-6);
+      }
     }
   });
 });

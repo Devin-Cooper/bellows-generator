@@ -299,9 +299,11 @@ export function offsetEdges(points, delta) {
  * up the right side. Outer grown OUTWARD by kerf/2; per gap the connector tabs sit at the SHARED
  * bridgeTabXs positions (same as the 3D STL breakaway bridges): TWO tabs INSET by cornerAllowance
  * from the clamped clear-span edges (a small face collapses to ONE centred tab). The gap is cut
- * EVERYWHERE except a tabW-wide strip on each tab centre, so the ribs join ONLY by the inset tabs
- * and the rib ENDS are fully cut — off the OUTWARD interlock point tips (x=-reach / x=width+reach)
- * and off the corner-fold zone, matching the STL. The clamped span still leaves a tab on setbacks.
+ * across its FULL extent [cutLeft, cutRight] — out to the OUTWARD interlock point tips (x=-reach /
+ * x=width+reach), so the tip triangles never web the ribs together — EVERYWHERE except a tabW-wide
+ * strip on each tab centre. So the ribs join ONLY by the inset tabs and every rib END (points
+ * included) is fully cut free, matching the STL's discrete ribs + breakaway bridges. Note the tab
+ * SPAN stays clamped to the clear width (off the points) even though the CUT runs out to the tips.
  */
 function traceColumn(ribs, colX0, datum, params) {
   const { rib, gap, kerf } = params;
@@ -341,33 +343,39 @@ function traceColumn(ribs, colX0, datum, params) {
   const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
   for (let i = 0; i < N - 1; i++) {
-    // Clamped clear span of the gap between rib i (bottom) and rib i+1 (top): FLOORED/CAPPED to the
-    // clear width [0, clearW] and then max'd/min'd with the adjacent rib edges.
-    //   Clear rib:                        leftEdge=0,       rightEdge=clearW.
-    //   Interlock INWARD gap  (leading bottom / rear top): leftEdge=setback, rightEdge=clearW-setback
-    //     — the max(0,..)/min(clearW,..) keeps the setback so a deep setback still leaves a tab.
-    //   Interlock OUTWARD gap (rear bottom / leading top): both adjacent edges are the WIDE base
-    //     (-reach / clearW+reach = the POINT TIPS). Flooring at the RAW outer boundary would put the
-    //     tab at x≈-reach / x≈clearW+reach — ON the interlock point, `reach` mm outside the clear
-    //     width. The [0, clearW] floor/cap pins the span onto the clear edge, off the point.
+    // Two DISTINCT spans for the gap between rib i (bottom) and rib i+1 (top):
+    //
+    // 1. The CUT EXTENT [cutLeft, cutRight] — the FULL width the outer blob fills across this gap,
+    //    i.e. the widest of the two facing band edges. On an interlock OUTWARD gap both facing edges
+    //    are the WIDE base, so this reaches the POINT TIPS (x=-reach / x=clearW+reach). The whole
+    //    gap-fill must be cut (minus the tab strips) or the tips WELD the ribs together at the fold
+    //    points. Clamping the cut to the clear width (as before) left those tip triangles uncut.
+    //
+    // 2. The TAB SPAN [tabLo, tabHi] — the clear overlap [0, clearW] clamped to the adjacent edges,
+    //    where the connector tabs must land so they sit on BOTH ribs and OFF the outward points.
+    //      Clear rib:            tabLo=0,       tabHi=clearW      (cutLeft/cutRight identical).
+    //      Interlock INWARD gap: tabLo=setback, tabHi=clearW-setback (== cut extent; setback keeps a tab).
+    //      Interlock OUTWARD gap: tabLo=0, tabHi=clearW — inset ONTO the clear edge, `reach` inside
+    //        the tips, so the tabs are never on a point even though the cut runs out to the tips.
     const clearW = Math.min(rows[i].width, rows[i + 1].width);
-    const leftEdge = Math.max(0, rows[i].leftBot, rows[i + 1].leftTop);
-    const rightEdge = Math.min(clearW, rows[i].rightBot, rows[i + 1].rightTop);
-    const span = rightEdge - leftEdge;
-    if (span <= 0) continue;
-    // Tab centres INSET by cornerAllowance from each clamped clear edge — the SAME positions the 3D
-    // STL breakaway bridges use (bridgeTabXs): TWO tabs normally, ONE centred tab on a small face.
-    const centres = bridgeTabXs(span, (leftEdge + rightEdge) / 2, params.cornerAllowance).sort(
+    const cutLeft = Math.min(rows[i].leftBot, rows[i + 1].leftTop);
+    const cutRight = Math.max(rows[i].rightBot, rows[i + 1].rightTop);
+    const tabLo = Math.max(0, rows[i].leftBot, rows[i + 1].leftTop);
+    const tabHi = Math.min(clearW, rows[i].rightBot, rows[i + 1].rightTop);
+    if (tabHi - tabLo <= 0) continue; // no clear overlap (degenerate tiny face) — leave the gap joined
+    // Tab centres INSET by cornerAllowance from each clear edge — the SAME positions the 3D STL
+    // breakaway bridges use (bridgeTabXs): TWO tabs normally, ONE centred tab on a small face.
+    const centres = bridgeTabXs(tabHi - tabLo, (tabLo + tabHi) / 2, params.cornerAllowance).sort(
       (a, b) => a - b
     );
-    // CUT the gap across [leftEdge, rightEdge] EVERYWHERE except a tabW-wide strip on each tab
-    // centre: the cut sub-rectangles are the COMPLEMENT of those strips. `bounds` interleaves the
-    // span ends with each strip's [centre-tabW/2, centre+tabW/2], so successive pairs are the cuts:
-    // [leftEdge, c1-tabW/2], [c1+tabW/2, c2-tabW/2], [c2+tabW/2, rightEdge] (or two spans, 1 tab).
-    const bounds = [leftEdge, ...centres.flatMap((c) => [c - tabW / 2, c + tabW / 2]), rightEdge];
+    // CUT the gap across the FULL extent [cutLeft, cutRight] EVERYWHERE except a tabW-wide strip on
+    // each tab centre: the cut sub-rectangles are the COMPLEMENT of those strips. `bounds` interleaves
+    // the extent ends with each strip's [centre-tabW/2, centre+tabW/2], so successive pairs are the
+    // cuts: [cutLeft, c1-tabW/2], [c1+tabW/2, c2-tabW/2], [c2+tabW/2, cutRight] (or two spans, 1 tab).
+    const bounds = [cutLeft, ...centres.flatMap((c) => [c - tabW / 2, c + tabW / 2]), cutRight];
     for (let k = 0; k < bounds.length; k += 2) {
-      const a = Math.max(leftEdge, bounds[k]);
-      const b = Math.min(rightEdge, bounds[k + 1]);
+      const a = Math.max(cutLeft, bounds[k]);
+      const b = Math.min(cutRight, bounds[k + 1]);
       if (b - a <= 0) continue; // strips at/over the ends collapse the neighbouring cut to nothing
       const nl = colX0 + a;
       const nr = colX0 + b;
