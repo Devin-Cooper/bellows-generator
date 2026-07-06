@@ -1,13 +1,17 @@
 // src/geometry/ribShapes.js
 // Interlock corner geometry (cornerMode 'interlock'): each rib is a CONVEX isosceles TRAPEZOID
-// that carries HALF a corner point. The apex sits ON a band edge (a fold line, y=0 or y=depth),
-// NOT at mid-depth. Per rib parity p=(wallIndex+ribIndex)%2 the trapezoid ORIENTATION flips:
+// that carries HALF a corner point. The apex sits ON a band edge — the GAP BOUNDARY, y=0 or
+// y=depth in rib-local coords, a half-gap (gap/2) SHORT of the actual crease — NOT on the crease
+// and NOT at mid-depth. Per rib parity p=(wallIndex+ribIndex)%2 the ORIENTATION flips:
 //   p even -> 'leading' : long/pointing edge on y=0, short cut-off edge on y=depth.
 //   p odd  -> 'rear'    : long/pointing edge on y=depth, short cut-off edge on y=0.
 // `reach` projects the point past the clear-width edge at a band edge; `setback` insets the short
 // cut-off edge at the OPPOSITE band edge. Adjacent walls (wallIndex differs by 1) and consecutive
-// ribs (same wall) are opposite parity -> opposite orientation, so their half-diagonals meet on
-// the shared fold line and form one full point (each rib holds half). Square: reach==setback
+// ribs (same wall) are opposite parity -> opposite orientation, so their half-diagonals FACE each
+// other across the centred gap (each rib holds half a point) but do NOT meet on the crease: the
+// transverse fold runs down the MIDDLE of the gap between them, so the two facing tips sit a full
+// gap apart and must not touch. (straight.js draws that fold at the gap centre = band-edge+gap/2
+// by design.) Square: reach==setback
 // (45deg). Tapered: reach!=setback (the Wide/Narrow end-angles sum to 90deg). The exact reach /
 // setback / clearance / taper end-angle split / absolute phase are PROVISIONAL and paper-fold-
 // gated; tests assert the CONSTRUCTION RULE only, not ground-truth coordinates.
@@ -133,7 +137,8 @@ export function cornerReachSetback(depth, cornerAllowance, taper = 0) {
  *   odd  -> 'rear'    : long/pointing edge on y=depth.
  * Both corner ends of a rib share the SAME orientation (one trapezoid). clear -> null (plain
  * inset rectangle). Adjacent walls (wallIndex +-1) are opposite parity at the same ribIndex, so
- * every corner pairs a 'leading' half-diagonal with a 'rear' half-diagonal = one full point.
+ * every corner pairs a 'leading' half-diagonal with a 'rear' half-diagonal — the two halves FACE
+ * each other across the centred gap (crease down its middle, a full gap apart) and must not touch.
  * @param {'clear'|'interlock'} cornerMode
  * @param {number} wallIndex
  * @param {number} ribIndex

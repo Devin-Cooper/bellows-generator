@@ -7,11 +7,13 @@ import {
 import { DEFAULT_PARAMS } from '../src/params.js';
 
 // Interlock rib geometry (CORRECTED): each rib is a CONVEX isosceles TRAPEZOID carrying HALF a
-// corner point, its apex on a band edge (fold line y=0 or y=depth), never mid-depth. Per rib
-// parity p=(wallIndex+ribIndex)%2 the orientation flips: even -> 'leading' (long edge on y=0),
-// odd -> 'rear' (long edge on y=depth). Adjacent walls differ by 1 in wallIndex -> opposite
-// parity -> opposite orientation, so their half-diagonals meet on the shared fold line and form
-// one full point. Numbers are PROVISIONAL / paper-fold-gated; these assert the CONSTRUCTION RULE.
+// corner point, its apex on a band edge (the GAP BOUNDARY, y=0 or y=depth in rib-local coords, a
+// half-gap short of the actual crease), never mid-depth. Per rib parity p=(wallIndex+ribIndex)%2
+// the orientation flips: even -> 'leading' (long edge on y=0), odd -> 'rear' (long edge on
+// y=depth). Adjacent walls differ by 1 in wallIndex -> opposite parity -> opposite orientation, so
+// their half-diagonals FACE each other across the centred gap (each holds half a point) but do NOT
+// meet on the crease — straight.js draws that fold at the gap centre, a full gap between the tips.
+// Numbers are PROVISIONAL / paper-fold-gated; these assert the CONSTRUCTION RULE.
 
 const shapeAt = (shapes, wallIndex, ribIndex) =>
   shapes.find((s) => s.wallIndex === wallIndex && s.ribIndex === ribIndex);
