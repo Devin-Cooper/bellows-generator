@@ -22,6 +22,59 @@ const CALIBRATION_MM = 50;
 
 const fmt = (n) => String(Math.round(n * 1e4) / 1e4);
 
+// Fixed builder-facing assembly legend. Drawn UPRIGHT in SHEET-LOCAL coords at the TOP-LEFT
+// corner (distinct from the bottom-left calibration square) and appended OUTSIDE the content /
+// blocks group on EVERY bed sheet, so the whole-sheet rotation of the rib/fold masters (Tasks
+// 3/4) never tips it sideways. ENGRAVE layer, one <text> per line.
+const ASSEMBLY_LEGEND_LINES = [
+  'Glue ribs between the fold lines, longest first; gap centred on each crease; fold after gluing',
+  'Each fold line runs down the MIDDLE of a bare gap, ~gap/2 clear of each rib',
+  'Corner points tuck across the gap; they do NOT meet the crease',
+];
+
+/** Sheet-level ENGRAVE assembly legend: upright, anchored top-left in sheet-local coords. */
+function assemblyLegendGroup() {
+  const texts = ASSEMBLY_LEGEND_LINES.map(
+    (line, i) =>
+      `<text data-role="assembly-legend" data-line="${i}" ` +
+      `x="${fmt(SHEET_MARGIN)}" y="${fmt(SHEET_MARGIN + 4 + i * 4)}" font-size="3">${line}</text>`
+  ).join('');
+  return (
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${texts}</g>`
+  );
+}
+
+/**
+ * gap/2-clearance annotation for the fold-pattern master sheets. Emitted INSIDE the pattern
+ * CONTENT group (flat coords) so it tiles across bed sheets and (Task 3) rotates WITH the
+ * geometry it labels. Pins to ONE TRANSVERSE fold-vs-rib gap on the first full face: the first
+ * (i=0) rib's bottom band edge sits at endMargin+rib and the transverse crease is drawn gap/2
+ * below it (straight.js: fy = endMargin + rib + i*pitch + gap/2). A short vertical dimension
+ * between those two ys (with end ticks + a label) proves the fold falls mid-gap, gap/2 clear of
+ * the rib. Not a longitudinal corner fold and not a miter diagonal — a transverse crease only.
+ */
+function gapClearanceAnnotation(params) {
+  const { rib, gap, endMargin, frontW, cornerAllowance } = params;
+  const yEdge = endMargin + rib;                     // first rib's bottom band edge (i=0)
+  const yCrease = yEdge + gap / 2;                   // transverse fold at the gap centre
+  const xDim = frontW / 2 + cornerAllowance + 6;     // inside the first full face's clear zone
+  const tick = 2;                                    // end-tick half-width (mm)
+  const seg = (x1, y1, x2, y2) =>
+    `<path data-role="gap-dim" d="M ${fmt(x1)} ${fmt(y1)} L ${fmt(x2)} ${fmt(y2)}"/>`;
+  const marks =
+    seg(xDim, yEdge, xDim, yCrease) +                     // the gap/2 dimension line
+    seg(xDim - tick, yEdge, xDim + tick, yEdge) +         // top tick at the rib band edge
+    seg(xDim - tick, yCrease, xDim + tick, yCrease) +     // bottom tick at the crease
+    `<text data-role="gap-dim-label" x="${fmt(xDim + tick + 1)}" ` +
+    `y="${fmt((yEdge + yCrease) / 2)}" font-size="2.5">` +
+    `gap/2 = ${fmt(gap / 2)} mm (fold mid-gap)</text>`;
+  return (
+    `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
+    `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${marks}</g>`
+  );
+}
+
 /** Grow an axis-aligned polygon outward from its bbox centre by kerf/2 (no clipping lib needed). */
 function growRect(points, kerf) {
   if (points.length < 3)
@@ -140,6 +193,10 @@ export function renderPatternSheets(model, params) {
     `font-size="3">${CALIBRATION_MM} mm</text>` +
     `</g>`;
 
+  // gap/2-clearance annotation, computed once (tile-independent) and drawn INSIDE the pattern
+  // content group so it tiles + (Task 3) rotates with the geometry it labels.
+  const gapAnno = gapClearanceAnnotation(params);
+
   return plan.tiles.map(
     (t) =>
       `<svg xmlns="http://www.w3.org/2000/svg" ` +
@@ -151,8 +208,10 @@ export function renderPatternSheets(model, params) {
       `width="${fmt(bedW)}" height="${fmt(bedH)}"/></clipPath></defs>\n` +
       `<g clip-path="url(#bed)"><g transform="translate(${fmt(-t.x)},${fmt(-t.y)})">\n` +
       groups +
+      `\n` + gapAnno +
       `\n</g></g>\n` +
       calGroup +
+      assemblyLegendGroup() +
       `\n</svg>`
   );
 }
@@ -448,6 +507,7 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
     `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spines.join('')}</g>` +
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
     `stroke="${LAYER_COLORS[LAYER.ENGRAVE]}" fill="none">${labels.join('')}${calSquare}</g>` +
+    assemblyLegendGroup() +
     `</svg>`
   );
 }
