@@ -43,7 +43,7 @@ const GROUPS = [
   { title: 'Type', fields: ['type'] },
   { title: 'Openings', fields: ['frontW', 'frontH', 'rearW', 'rearH'] },
   { title: 'Draw & pleats', fields: ['maxDraw', 'drawFactor', 'rib', 'gap', 'ribCount'] },
-  { title: 'Corners, tabs & margins', fields: ['cornerMode', 'cornerAllowance', 'glueTab', 'endMargin'] },
+  { title: 'Corners, tabs & margins', fields: ['cornerMode', 'cornerAllowance', 'glueTab', 'endMargin', 'cornerCombs', 'combToothWidth'] },
   { title: 'Material & laser', fields: ['fabricThickness', 'ribThickness', 'kerf', 'bedSize', 'printOffset'] },
   { title: 'Optics', fields: ['focalLength', 'opticalOffset'] },
   { title: 'Laser bed', fields: ['bedW', 'bedH'] },
@@ -90,6 +90,9 @@ export function buildControlPanel(opts = {}) {
           o.textContent = opt;
           input.appendChild(o);
         }
+      } else if (meta.kind === 'bool') {
+        input = document.createElement('input');
+        input.type = 'checkbox';
       } else {
         input = document.createElement('input');
         input.type = 'number';
@@ -99,7 +102,7 @@ export function buildControlPanel(opts = {}) {
       }
       input.id = `ctl-${key}`;
       input.dataset.key = key;
-      input.addEventListener(meta.kind === 'select' ? 'change' : 'input', handleInput);
+      input.addEventListener(meta.kind === 'select' || meta.kind === 'bool' ? 'change' : 'input', handleInput);
       inputs[key] = input;
 
       field.appendChild(label);
@@ -157,6 +160,7 @@ export function buildControlPanel(opts = {}) {
     for (const key of Object.keys(inputs)) {
       const input = inputs[key];
       if (input.tagName === 'SELECT') next[key] = input.value;
+      else if (input.type === 'checkbox') next[key] = input.checked;
       else if (input.value === '') next[key] = null;
       else next[key] = Number(input.value);
     }
@@ -174,7 +178,8 @@ export function buildControlPanel(opts = {}) {
     for (const key of Object.keys(inputs)) {
       const input = inputs[key];
       const v = params[key];
-      input.value = v == null ? '' : String(v);
+      if (input.type === 'checkbox') input.checked = !!v;
+      else input.value = v == null ? '' : String(v);
       if (key === 'rearW' || key === 'rearH') input.disabled = straight;
     }
   }
