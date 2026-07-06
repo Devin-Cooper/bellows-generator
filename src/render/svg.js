@@ -1,5 +1,6 @@
 import { LAYER, LAYER_COLORS } from '../constants.js';
 import { computeWallRibLayout } from '../geometry/wallRibLayout.js';
+import { computeCornerCombs } from '../geometry/cornerCombs.js';
 // Share the breakaway-tab X positions with the 3D STL (export/stl.js): the laser connector tabs and
 // the printed breakaway bridges must land at the SAME inset positions. This import is acyclic —
 // stl.js does not import svg.js — so it is the lowest-churn way to keep the two in lockstep.
@@ -517,6 +518,27 @@ export function packRibSheets(walls, params) {
     }
   }
 
+  // Corner-gap combs: one un-split block per corner, appended so the shelf packer places them
+  // alongside the rib lattices (same 0/90 rotation policy). A comb is not stack-splittable.
+  for (const comb of computeCornerCombs(params)) {
+    const cw = kerf + comb.bbox.w; // gap-span cross dimension
+    const ch = kerf + comb.bbox.h; // full pleated length
+    const fitsUn = cw <= usableW && ch <= usableH;
+    const fitsRot = ch <= usableW && cw <= usableH;
+    const rotated = fitsUn ? false : fitsRot ? true : ch > usableW; // prefer un; else rot; else lay long side along width
+    if (!fitsUn && !fitsRot) {
+      console.warn(
+        `Corner comb ${comb.cornerIndex} (${cw.toFixed(1)}x${ch.toFixed(1)}mm) exceeds usable bed; ` +
+          `increase bedW/bedH`
+      );
+    }
+    blocks.push({
+      kind: 'comb', comb, rotated,
+      contentW: rotated ? ch : cw,
+      contentH: rotated ? cw : ch,
+    });
+  }
+
   // (2) Shelf-pack blocks onto bed sheets.
   const sheets = [];
   let sheet = null;
@@ -549,6 +571,44 @@ export function packRibSheets(walls, params) {
   return sheets;
 }
 
+/** Emit one comb block into the layer sinks (cutPaths, mountains, valleys, labels). Mirrors the
+ *  rib-block rotation machinery: un-rotated → absolute coords; rotated → block-local coords + a
+ *  per-layer transform group. */
+function renderCombBlock(block, params, sinks) {
+  const f = fmt;
+  const half = params.kerf / 2;
+  const comb = block.comb;
+  const ox = block.rotated ? half : block.x + half;
+  const oy = block.rotated ? half : block.y + half;
+  const pt = (p) => `${f(ox + p.x)},${f(oy + p.y)}`;
+  const outlineD = `M ${comb.outline.map(pt).join(' L ')} Z`;
+  const cutEl =
+    `<path data-role="comb" data-corner="${comb.cornerIndex}" fill-rule="evenodd" d="${outlineD}"/>`;
+  const scoreEl = (s) =>
+    `<line data-role="comb-score" data-corner="${comb.cornerIndex}" ` +
+    `x1="${f(ox + s.points[0].x)}" y1="${f(oy + s.points[0].y)}" ` +
+    `x2="${f(ox + s.points[1].x)}" y2="${f(oy + s.points[1].y)}"/>`;
+  const mEls = comb.scores.filter((s) => s.type === LAYER.FOLD_MOUNTAIN).map(scoreEl).join('');
+  const vEls = comb.scores.filter((s) => s.type === LAYER.FOLD_VALLEY).map(scoreEl).join('');
+  const labelEl =
+    `<text data-role="comb-label" data-corner="${comb.cornerIndex}" ` +
+    `x="${f(ox + comb.bbox.w / 2)}" y="${f(oy + 8)}" font-size="2.5" text-anchor="middle">` +
+    `${comb.label}</text>`;
+  if (block.rotated) {
+    const orientedW = block.contentW; // swapped: comb length runs along screen X
+    const xform = `translate(${f(block.x + orientedW)}, ${f(block.y)}) rotate(90)`;
+    sinks.cutPaths.push(`<g transform="${xform}">${cutEl}</g>`);
+    if (mEls) sinks.mountains.push(`<g transform="${xform}">${mEls}</g>`);
+    if (vEls) sinks.valleys.push(`<g transform="${xform}">${vEls}</g>`);
+    sinks.labels.push(`<g transform="${xform}">${labelEl}</g>`);
+  } else {
+    sinks.cutPaths.push(cutEl);
+    if (mEls) sinks.mountains.push(mEls);
+    if (vEls) sinks.valleys.push(vEls);
+    sinks.labels.push(labelEl);
+  }
+}
+
 /** One bed sheet: packed lattices (CUT) + spine scores (FOLD_VALLEY) + rib labels & calibration (ENGRAVE). */
 export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
   const { rib, gap, kerf, bedW, bedH } = params;
@@ -558,7 +618,12 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
   const cutPaths = [];
   const spines = [];
   const labels = [];
+  const mountains = []; // comb FOLD_MOUNTAIN scores (empty unless cornerCombs on)
   for (const block of blocks) {
+    if (block.kind === 'comb') {
+      renderCombBlock(block, params, { cutPaths, mountains, valleys: spines, labels });
+      continue;
+    }
     // Un-rotated blocks emit ABSOLUTE coords (byte-identical to before). Rotated blocks emit
     // BLOCK-LOCAL coords (origin 0,0) and are seated by a per-block transform applied INSIDE each
     // layer group, so the geometry coordinates themselves are never rotated.
@@ -613,6 +678,10 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
     `width="${f(CALIBRATION_MM)}" height="${f(CALIBRATION_MM)}"/>` +
     `<text data-role="calibration-label" x="${f(calX)}" y="${f(calY - 1)}" ` +
     `font-size="3">${CALIBRATION_MM} mm</text>`;
+  const mountainGroup = mountains.length
+    ? `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_MOUNTAIN}" ` +
+      `stroke="${LAYER_COLORS[LAYER.FOLD_MOUNTAIN]}" fill="none">${mountains.join('')}</g>`
+    : '';
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
@@ -620,6 +689,7 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
     `width="${f(bedW)}mm" height="${f(bedH)}mm" viewBox="0 0 ${f(bedW)} ${f(bedH)}">` +
     `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
     `stroke="${LAYER_COLORS[cut]}" fill="none">${cutPaths.join('')}</g>` +
+    mountainGroup +
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_VALLEY}" ` +
     `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spines.join('')}</g>` +
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.ENGRAVE}" ` +
