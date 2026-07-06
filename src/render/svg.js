@@ -363,11 +363,23 @@ function traceColumn(ribs, colX0, datum, params) {
     const tabLo = Math.max(0, rows[i].leftBot, rows[i + 1].leftTop);
     const tabHi = Math.min(clearW, rows[i].rightBot, rows[i + 1].rightTop);
     if (tabHi - tabLo <= 0) continue; // no clear overlap (degenerate tiny face) — leave the gap joined
-    // Tab centres INSET by cornerAllowance from each clear edge — the SAME positions the 3D STL
-    // breakaway bridges use (bridgeTabXs): TWO tabs normally, ONE centred tab on a small face.
-    const centres = bridgeTabXs(tabHi - tabLo, (tabLo + tabHi) / 2, params.cornerAllowance).sort(
-      (a, b) => a - b
-    );
+    // Tab centres INSET by cornerAllowance from the min-clear-width span — the SAME inset the 3D STL
+    // breakaway bridges use (bridgeTabXs(minClearWidth, columnCentre, ca)): TWO tabs normally, ONE
+    // centred tab on a small face. Passing the FULL clearW (not the setback-narrowed span tabHi-tabLo)
+    // restores cross-artifact PARITY of the tab INSET/SEPARATION — the old narrowed span pushed
+    // interlock INWARD-gap tabs ~setback further in than the STL and shifted the 1-vs-2-tab threshold.
+    // Parity scope: (1) the SEPARATION (clearW-2ca) and per-edge inset (ca) now match the STL on EVERY
+    //   bellows; the ABSOLUTE position coincides exactly for STRAIGHT (equal-adjacent-width) faces, and
+    //   on a taper differs on the WIDER rib by (wWide-wNarrow)/2 because this ladder LEFT-aligns ribs at
+    //   colX0 while the STL CENTER-aligns them on xCursor — a layout convention, not a defect (each tab
+    //   still lands on both ribs). (2) The clamp into [tabLo, tabHi] keeps each tab on BOTH ribs: a
+    //   NO-OP when setback<=cornerAllowance (straight + narrowing tapers + clear), ACTIVE only on
+    //   WIDENING tapers (setback>ca) where it pins the tab to the setback edge, trading exactness for
+    //   connectivity (the STL bridge floats off the setback there — a separate pre-existing STL issue).
+    const ca = params.cornerAllowance;
+    const centres = bridgeTabXs(clearW, clearW / 2, ca)
+      .map((c) => Math.min(tabHi, Math.max(tabLo, c)))
+      .sort((a, b) => a - b);
     // CUT the gap across the FULL extent [cutLeft, cutRight] EVERYWHERE except a tabW-wide strip on
     // each tab centre: the cut sub-rectangles are the COMPLEMENT of those strips. `bounds` interleaves
     // the extent ends with each strip's [centre-tabW/2, centre+tabW/2], so successive pairs are the
