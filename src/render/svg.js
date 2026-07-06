@@ -529,7 +529,7 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
     const stackH = (block.ribs.length - 1) * pitch + rib;
     const lc = (block.wallIndex + 3) % 4;
     const rc = block.wallIndex;
-    const cut =
+    const cutEl =
       `<path data-role="ladder" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
       `data-seg="${block.segIndex}" fill-rule="evenodd" d="${d}"/>`;
     const spine =
@@ -555,11 +555,11 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
       // would collapse the 3 layers).
       const orientedW = block.contentW; // swapped: rib-stack length
       const xform = `translate(${f(block.x + orientedW)}, ${f(block.y)}) rotate(90)`;
-      cutPaths.push(`<g transform="${xform}">${cut}</g>`);
+      cutPaths.push(`<g transform="${xform}">${cutEl}</g>`);
       spines.push(`<g transform="${xform}">${spine}</g>`);
       labels.push(`<g transform="${xform}">${blockLabels}</g>`);
     } else {
-      cutPaths.push(cut);
+      cutPaths.push(cutEl);
       spines.push(spine);
       labels.push(blockLabels);
     }

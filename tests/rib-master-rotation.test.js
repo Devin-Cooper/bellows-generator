@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderRibMasterSheets, packRibSheets, collectWalls } from '../src/render/svg.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
+import { buildPatternModel } from '../src/geometry/index.js';
 
 const P = (o = {}) => normalizeParams({ ...DEFAULT_PARAMS, ...o });
 const blocksOf = (params) => packRibSheets(collectWalls(params), params).flatMap((s) => s.blocks);
@@ -120,6 +121,44 @@ describe('renderRibSheetSVG — rotated block transform seats geometry on-bed', 
       expect(flat).toContain('data-role="calibration"');   // calibration is NOT inside a rotate group
       expect(svg).toContain('data-role="rib-label"');
       expect(flat).not.toContain('data-role="rib-label"'); // every rib label rotates with its block
+    }
+  });
+});
+
+describe('renderRibSheetSVG — rotated block layer separation', () => {
+  // Helper: collect concatenated inner HTML of every <g inkscape:label="LABEL"> in the SVG.
+  function layerContent(svg, label) {
+    const re = new RegExp(
+      `<g inkscape:groupmode="layer" inkscape:label="${label}"[^>]*>(.*?)<\\/g>`,
+      'gs'
+    );
+    const parts = [];
+    let m;
+    while ((m = re.exec(svg)) !== null) parts.push(m[1]);
+    return parts.join('');
+  }
+
+  it('rotated-block cut path, spine and labels land in three SEPARATE layer groups', () => {
+    const p = P({ cornerMode: 'interlock' });
+    const svgs = renderRibMasterSheets(buildPatternModel(p), p);
+    expect(svgs.length).toBeGreaterThan(0);
+    for (const svg of svgs) {
+      const cutContent        = layerContent(svg, 'CUT');
+      const foldValleyContent = layerContent(svg, 'FOLD_VALLEY');
+      const engraveContent    = layerContent(svg, 'ENGRAVE');
+
+      // Each of the three layers carries a rotate(90) sub-group (one per rotated block).
+      expect(cutContent).toMatch(/rotate\(90\)/);
+      expect(foldValleyContent).toMatch(/rotate\(90\)/);
+      expect(engraveContent).toMatch(/rotate\(90\)/);
+
+      // Spine (FOLD_VALLEY) is NOT collapsed into the CUT layer group.
+      expect(foldValleyContent).toContain('data-role="spine"');
+      expect(cutContent).not.toContain('data-role="spine"');
+
+      // Per-rib labels (ENGRAVE) are NOT collapsed into the CUT layer group.
+      expect(engraveContent).toContain('data-role="rib-label"');
+      expect(cutContent).not.toContain('data-role="rib-label"');
     }
   });
 });
