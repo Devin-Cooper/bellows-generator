@@ -55,7 +55,7 @@ describe('computeCornerCombs', () => {
     expect(longs[0].points[1].y).toBeCloseTo(flatPleatedLength, 6);
   });
 
-  it('has N transverse scores at the crease positions, confined to the spine, M/V by (i+f) parity', () => {
+  it('has N transverse scores at the crease positions, confined to the spine, alternating M/V', () => {
     const params = P();
     const ca = params.cornerAllowance;
     const rib = params.rib;
@@ -69,9 +69,22 @@ describe('computeCornerCombs', () => {
       // confined to the spine x-band [ca - S/2, ca + S/2]
       expect(Math.min(s.points[0].x, s.points[1].x)).toBeCloseTo(ca - COMB_SPINE_WIDTH / 2, 6);
       expect(Math.max(s.points[0].x, s.points[1].x)).toBeCloseTo(ca + COMB_SPINE_WIDTH / 2, 6);
-      const mountain = ((i + comb.f) % 2) === 0;
-      expect(s.type).toBe(mountain ? LAYER.FOLD_MOUNTAIN : LAYER.FOLD_VALLEY);
+      expect([LAYER.FOLD_MOUNTAIN, LAYER.FOLD_VALLEY]).toContain(s.type);
     });
+    // Accordion pattern (independent of the exact parity formula): consecutive scores alternate
+    // mountain<->valley, and BOTH fold senses appear along the spine.
+    for (let i = 1; i < trans.length; i++) expect(trans[i].type).not.toBe(trans[i - 1].type);
+    const kinds = new Set(trans.map((s) => s.type));
+    expect(kinds.has(LAYER.FOLD_MOUNTAIN)).toBe(true);
+    expect(kinds.has(LAYER.FOLD_VALLEY)).toBe(true);
+  });
+
+  it('the two M/V hint phases differ by corner parity (not all 4 combs the same phase)', () => {
+    // Not asserting which corner is which (parity is an experimental hint), only that the first
+    // transverse score flips with the corner's f, so the 4 combs are NOT all one phase.
+    const combs = computeCornerCombs(P());
+    const firstTypes = combs.map((c) => c.scores.filter((s) => s.points[0].y === s.points[1].y)[0].type);
+    expect(new Set(firstTypes).size).toBe(2);
   });
 
   it('bbox is 2*ca wide and flatPleatedLength tall; outline is a closed non-empty polygon', () => {
