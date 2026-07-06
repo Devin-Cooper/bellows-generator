@@ -62,11 +62,12 @@ describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
     expect(joined.includes('data-qty')).toBe(false);
   });
 
-  it('splits a wall lattice taller than the bed into segments (each its own lattice)', () => {
-    const { model, params, metrics } = ctx(); // default stack (~360mm) > usable bed height
+  it('splits a wall too tall for either orientation into segments (each its own lattice)', () => {
+    // maxDraw 600 -> a ~50-rib stack (~722mm) exceeds BOTH usableW (599.6) and usableH (341.4), so
+    // even the fewest-segment (rotated) orientation must bed-wrap: the wall appears as >=2 segments.
+    const { model, params, metrics } = ctx({ maxDraw: 600 });
     const sheets = renderRibMasterSheets(model, params);
     const paths = allPaths(sheets);
-    // at least one wall appears as >=2 segments
     const segsByWall = new Map();
     for (const a of paths) {
       const key = `${a['data-face']}${a['data-wall']}`;
@@ -74,7 +75,8 @@ describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
       segsByWall.get(key).add(a['data-seg']);
     }
     expect([...segsByWall.values()].some((s) => s.size >= 2)).toBe(true);
-    // no single lattice spans the whole stack -> it really was split
+    // no single lattice spans the whole stack -> it really was split (path d extent, rotated frame
+    // maps the stack onto local Y so maxY-minY is the segment's stack length)
     const fullStack = (metrics.ribCount - 1) * metrics.pitch + params.rib;
     const tallest = Math.max(...paths.map((a) => { const b = bboxOfD(a.d); return b.maxY - b.minY; }));
     expect(tallest).toBeLessThan(fullStack);
@@ -116,10 +118,28 @@ describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
     expect(walls).toEqual(new Set(['W0', 'W2', 'H1', 'H3']));
     for (const svg of sheets) {
       const { w, h } = sheetDim(svg);
+      // Rotated blocks emit block-local coords; project through translate+rotate(90) for screen x.
+      // Un-rotated blocks emit absolute coords; check path bbox directly.
+      const rotGroups = new Map();
+      const gre = /<g transform="translate\(([-\d.]+),\s*([-\d.]+)\)\s+rotate\(90\)">(.*?)<\/g>/gs;
+      let gm;
+      while ((gm = gre.exec(svg)) !== null) {
+        const pm = /data-role="ladder"[^>]*\bd="([^"]+)"/.exec(gm[3]);
+        if (!pm) continue;
+        rotGroups.set(pm[1], { X: Number(gm[1]), Y: Number(gm[2]) });
+      }
       for (const a of pathAttrs(svg)) {
         const b = bboxOfD(a.d);
-        expect(b.minX).toBeGreaterThanOrEqual(-1e-6);
-        expect(b.maxX).toBeLessThanOrEqual(w + 1e-6);
+        if (rotGroups.has(a.d)) {
+          // SVG rotate(90): local(x,y) -> (-y,x); translate(X,Y) -> screen(X-y, Y+x)
+          const { X } = rotGroups.get(a.d);
+          const screenMinX = X - b.maxY, screenMaxX = X - b.minY;
+          expect(screenMinX).toBeGreaterThanOrEqual(-1e-6);
+          expect(screenMaxX).toBeLessThanOrEqual(w + 1e-6);
+        } else {
+          expect(b.minX).toBeGreaterThanOrEqual(-1e-6);
+          expect(b.maxX).toBeLessThanOrEqual(w + 1e-6);
+        }
       }
     }
   });
@@ -128,28 +148,30 @@ describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
 describe('renderRibMasterSheets — too-wide rib wall warning (uncuttable sheet)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('warns when a rib wall is wider than the usable bed width (rib cannot be split across its width)', () => {
+  it('warns naming the chosen-orientation bed dimension when even the best orientation overflows', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // Narrow bed: usableW = bedW - 2*5 = 90mm; a default wall's clear width is 120mm > 90mm.
-    const { model, params } = ctx({ bedW: 100 });
-    const usableW = params.bedW - 2 * 5;
+    // 100x100 bed: usableW=90, usableH=35. A default wall (~120mm wide) overflows BOTH; the packer
+    // picks the fewest-segment orientation (rotated), whose cross-dim is the bed HEIGHT (usableH=35).
+    const { model, params } = ctx({ bedW: 100, bedH: 100 });
+    const usableH = params.bedH - 3 * 5 - 50;
     renderRibMasterSheets(model, params);
     const overflowWarns = warn.mock.calls
       .map((c) => String(c[0]))
-      .filter((m) => /exceeds usable bed width/.test(m));
+      .filter((m) => /exceeds usable bed (width|height)/.test(m));
     expect(overflowWarns.length).toBeGreaterThan(0);
-    // Names the wall (face+index) and reports the numeric overflow against the usable width.
+    // Names the wall (face+index) and reports the numeric overflow against the CHOSEN cross dim.
     expect(overflowWarns.some((m) => /\b[WH]\d\b/.test(m))).toBe(true);
-    expect(overflowWarns.some((m) => m.includes(usableW.toFixed(1)))).toBe(true);
+    expect(overflowWarns.some((m) => /exceeds usable bed height/.test(m))).toBe(true);
+    expect(overflowWarns.some((m) => m.includes(usableH.toFixed(1)))).toBe(true);
   });
 
-  it('does NOT warn at default params (every wall fits the bed width)', () => {
+  it('does NOT warn at default params (every wall fits a bed orientation)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { model, params } = ctx();
     renderRibMasterSheets(model, params);
     const overflowWarns = warn.mock.calls
       .map((c) => String(c[0]))
-      .filter((m) => /exceeds usable bed width/.test(m));
+      .filter((m) => /exceeds usable bed (width|height)/.test(m));
     expect(overflowWarns.length).toBe(0);
   });
 });

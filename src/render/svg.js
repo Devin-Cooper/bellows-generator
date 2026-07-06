@@ -389,9 +389,28 @@ export function packRibSheets(walls, params) {
   const pitch = rib + gap;
   const usableW = bedW - 2 * SHEET_MARGIN;
   const usableH = bedH - 3 * SHEET_MARGIN - CALIBRATION_MM; // reserve the bottom calibration band
-  const budget = Math.max(rib, usableH - kerf);             // vertical rib-stack budget per segment
+  // The rib STACK (height) is the only splittable axis; the rib WIDTH is un-splittable and must fit
+  // the CROSS bed dimension. Greedy stack-split: how many bed-fitting segments a stack of `n` ribs
+  // needs for a given axial `budget` (mirrors the segment loop below + stl.js bed-wrap).
+  const countSegments = (n, budget) => {
+    let segs = 0;
+    let i = 0;
+    while (i < n) {
+      let len = 0;
+      let j = i;
+      while (j < n) {
+        const add = j === i ? rib : gap + rib;
+        if (j > i && len + add > budget) break;
+        len += add;
+        j++;
+      }
+      i = j;
+      segs++;
+    }
+    return segs;
+  };
 
-  // (1) Y-split walls into segment blocks (mirrors stl.js computeRibOutlines bed-wrap).
+  // (1) Choose each wall's orientation, THEN split its stack into bed-fitting segment blocks.
   const blocks = [];
   for (const wall of walls) {
     const ribs = wall.ribs;
@@ -399,15 +418,34 @@ export function packRibSheets(walls, params) {
     const widthMax = Math.max(...ribs.map((r) => r.width));
     const leftPad = Math.max(0, ...ribs.map((r) => -Math.min(...r.points.map((p) => p.x))));
     const rightPad = Math.max(0, ...ribs.map((r) => Math.max(...r.points.map((p) => p.x)) - r.width));
-    const contentW = kerf + leftPad + widthMax + rightPad;
+    const contentW = kerf + leftPad + widthMax + rightPad; // un-splittable rib-width cross dimension
 
-    // A rib cannot be split across its WIDTH (only its height is bed-wrapped), so a wall wider than
-    // the usable bed width overruns the sheet unavoidably. Warn (once per wall) but still emit the
-    // sheet — the geometry is correct, only the chosen bed is too narrow to cut it in one piece.
-    if (contentW > usableW) {
+    // Un-rotated: stack along Y (split budget usableH, cross-dim vs usableW).
+    // Rotated 90deg: stack along X (split budget usableW, cross-dim vs usableH).
+    // PREFER an orientation whose cross-dim FITS its bed dimension; among those pick FEWEST stack
+    // segments; tie -> un-rotated. Never trade a fitting cross-dim for "fewer segments" that
+    // overflows the bed the un-splittable width lands on.
+    const budgetUn = Math.max(rib, usableH - kerf);
+    const budgetRot = Math.max(rib, usableW - kerf);
+    const options = [
+      { rotated: false, fits: contentW <= usableW, budget: budgetUn,
+        segs: countSegments(ribs.length, budgetUn), crossBed: usableW, dim: 'width', dimParam: 'bedW' },
+      { rotated: true, fits: contentW <= usableH, budget: budgetRot,
+        segs: countSegments(ribs.length, budgetRot), crossBed: usableH, dim: 'height', dimParam: 'bedH' },
+    ];
+    const fitting = options.filter((o) => o.fits);
+    const pool = fitting.length ? fitting : options;
+    pool.sort((a, b) => a.segs - b.segs || Number(a.rotated) - Number(b.rotated));
+    const choice = pool[0];
+
+    // A rib cannot be split across its WIDTH, so a wall whose CHOSEN-orientation cross-dim exceeds
+    // its bed dimension overruns unavoidably. Warn (once per wall) but still emit — the geometry is
+    // correct, only the chosen bed is too small to cut it in one piece.
+    if (!choice.fits) {
       console.warn(
         `Rib wall ${wall.face}${wall.wallIndex} width ${contentW.toFixed(1)}mm exceeds ` +
-          `usable bed width ${usableW.toFixed(1)}mm; increase bedW or reduce the opening`
+          `usable bed ${choice.dim} ${choice.crossBed.toFixed(1)}mm; ` +
+          `increase ${choice.dimParam} or reduce the opening`
       );
     }
 
@@ -418,15 +456,19 @@ export function packRibSheets(walls, params) {
       let segEnd = segStart;
       while (segEnd < ribs.length) {
         const add = segEnd === segStart ? rib : gap + rib;
-        if (segEnd > segStart && segLen + add > budget) break;
+        if (segEnd > segStart && segLen + add > choice.budget) break;
         segLen += add;
         segEnd++;
       }
       const segRibs = ribs.slice(segStart, segEnd);
       const contentH = kerf + (segRibs.length - 1) * pitch + rib;
+      // Rotated 90deg: swap so the shelf packer (width-wrap + new-sheet below) reads the ON-SHEET
+      // footprint — oriented width = stack length, oriented height = rib-width band.
       blocks.push({
-        face: wall.face, wallIndex: wall.wallIndex, segIndex,
-        ribs: segRibs, widthMax, leftPad, rightPad, contentW, contentH,
+        face: wall.face, wallIndex: wall.wallIndex, segIndex, rotated: choice.rotated,
+        ribs: segRibs, widthMax, leftPad, rightPad,
+        contentW: choice.rotated ? contentH : contentW,
+        contentH: choice.rotated ? contentW : contentH,
       });
       segStart = segEnd;
       segIndex++;
@@ -475,31 +517,52 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
   const spines = [];
   const labels = [];
   for (const block of blocks) {
-    const colX0 = block.x + kerf / 2 + block.leftPad;
-    const datumY = block.y + kerf / 2;
+    // Un-rotated blocks emit ABSOLUTE coords (byte-identical to before). Rotated blocks emit
+    // BLOCK-LOCAL coords (origin 0,0) and are seated by a per-block transform applied INSIDE each
+    // layer group, so the geometry coordinates themselves are never rotated.
+    const baseX = block.rotated ? 0 : block.x;
+    const baseY = block.rotated ? 0 : block.y;
+    const colX0 = baseX + kerf / 2 + block.leftPad;
+    const datumY = baseY + kerf / 2;
     const d = traceColumn(block.ribs, colX0, datumY, params);
-    cutPaths.push(
-      `<path data-role="ladder" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
-        `data-seg="${block.segIndex}" fill-rule="evenodd" d="${d}"/>`
-    );
     const cx = colX0 + block.widthMax / 2;
     const stackH = (block.ribs.length - 1) * pitch + rib;
-    spines.push(
-      `<line data-role="spine" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
-        `x1="${f(cx)}" y1="${f(datumY)}" x2="${f(cx)}" y2="${f(datumY + stackH)}"/>`
-    );
     const lc = (block.wallIndex + 3) % 4;
     const rc = block.wallIndex;
-    block.ribs.forEach((s, j) => {
-      const ty = datumY + j * pitch + rib / 2;
-      const corner = `L${lc}/R${rc}`;
-      labels.push(
-        `<text data-role="rib-label" data-index="${s.ribIndex}" data-face="${block.face}" ` +
+    const cut =
+      `<path data-role="ladder" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
+      `data-seg="${block.segIndex}" fill-rule="evenodd" d="${d}"/>`;
+    const spine =
+      `<line data-role="spine" data-face="${block.face}" data-wall="${block.wallIndex}" ` +
+      `x1="${f(cx)}" y1="${f(datumY)}" x2="${f(cx)}" y2="${f(datumY + stackH)}"/>`;
+    const blockLabels = block.ribs
+      .map((s, j) => {
+        const ty = datumY + j * pitch + rib / 2;
+        const corner = `L${lc}/R${rc}`;
+        return (
+          `<text data-role="rib-label" data-index="${s.ribIndex}" data-face="${block.face}" ` +
           `data-wall="${block.wallIndex}" data-corner="${corner}" ` +
           `x="${f(cx)}" y="${f(ty)}" font-size="2.5" text-anchor="middle">` +
           `${s.ribIndex}${block.face} ${corner}</text>`
-      );
-    });
+        );
+      })
+      .join('');
+    if (block.rotated) {
+      // SVG rotate(90) is CW: block-local (x,y) -> (-y,x), so the local rib-stack (y in
+      // [0, orientedW]) lands in screen X in [-orientedW, 0]; translate(+orientedW,0) re-seats it to
+      // [block.x, block.x+orientedW]. orientedW = the stack length (= the swapped contentW). A
+      // separate sub-group per layer keeps CUT / FOLD_VALLEY / ENGRAVE distinct (one wrapping group
+      // would collapse the 3 layers).
+      const orientedW = block.contentW; // swapped: rib-stack length
+      const xform = `translate(${f(block.x + orientedW)}, ${f(block.y)}) rotate(90)`;
+      cutPaths.push(`<g transform="${xform}">${cut}</g>`);
+      spines.push(`<g transform="${xform}">${spine}</g>`);
+      labels.push(`<g transform="${xform}">${blockLabels}</g>`);
+    } else {
+      cutPaths.push(cut);
+      spines.push(spine);
+      labels.push(blockLabels);
+    }
   }
   const calX = SHEET_MARGIN;
   const calY = bedH - SHEET_MARGIN - CALIBRATION_MM;

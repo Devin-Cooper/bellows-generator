@@ -74,7 +74,7 @@ describe('renderRibMasterSheets interlock — connector tabs stay within the cle
       );
       expect(path, `path for ${block.face}${block.wallIndex} seg${block.segIndex}`).toBeTruthy();
 
-      const colX0 = block.x + p.kerf / 2 + block.leftPad; // mirrors renderRibSheetSVG
+      const colX0 = (block.rotated ? 0 : block.x) + p.kerf / 2 + block.leftPad; // block-LOCAL when rotated
       const clearW = Math.min(...block.ribs.map((r) => r.width));
       const leftTip = colX0 - reach; // -reach point tip (outside the clear width)
       const rightTip = colX0 + clearW + reach; // width+reach point tip
