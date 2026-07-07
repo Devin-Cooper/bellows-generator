@@ -38,6 +38,27 @@ const sheetDim = (svg) => ({
   h: Number(svg.match(/height="([\d.]+)mm"/)[1]),
 });
 
+// Each ladder path with its wrapping transform (rotated blocks emit BLOCK-LOCAL coords + a
+// translate(tx,ty) rotate(90) group, so raw d is NOT the on-sheet position).
+function ladderPlacements(svg) {
+  const out = [];
+  const re = /(?:<g transform="translate\(([-\d.]+), ([-\d.]+)\) rotate\(90\)">\s*)?<path data-role="ladder"[^>]*?d="([^"]+)"/g;
+  let m;
+  while ((m = re.exec(svg)) !== null) {
+    out.push({ rotated: m[1] !== undefined, tx: Number(m[1] || 0), ty: Number(m[2] || 0), d: m[3] });
+  }
+  return out;
+}
+// Actual bed-frame bbox: raw for un-rotated; for rotated apply translate(tx,ty) rotate(90) —
+// SVG rotate(90) is CW so (x,y) -> (tx - y, ty + x).
+function placedBbox(p) {
+  const b = bboxOfD(p.d);
+  if (!p.rotated) return b;
+  const X = [p.tx - b.maxY, p.tx - b.minY];
+  const Y = [p.ty + b.minX, p.ty + b.maxX];
+  return { minX: Math.min(...X), maxX: Math.max(...X), minY: Math.min(...Y), maxY: Math.max(...Y) };
+}
+
 describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
   it('returns an array of valid bedW x bedH SVG sheets', () => {
     const { model, params } = ctx();
@@ -87,8 +108,8 @@ describe('renderRibMasterSheets — bed-sized rib master sheets', () => {
     const sheets = renderRibMasterSheets(model, params);
     for (const svg of sheets) {
       const { w, h } = sheetDim(svg);
-      for (const a of pathAttrs(svg)) {
-        const b = bboxOfD(a.d);
+      for (const p of ladderPlacements(svg)) {
+        const b = placedBbox(p);
         expect(b.minX).toBeGreaterThanOrEqual(-1e-6);
         expect(b.minY).toBeGreaterThanOrEqual(-1e-6);
         expect(b.maxX).toBeLessThanOrEqual(w + 1e-6);

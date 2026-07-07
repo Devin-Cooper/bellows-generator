@@ -6,12 +6,12 @@ import { FIELDS } from '../src/ui/fields.js';
 import { computePageGrid, renderPageGridSVG } from '../src/ui/preview.js';
 
 describe('laser-bed params replace the retired pageSize / A4 tiling', () => {
-  it('DEFAULT_PARAMS carries bedW/bedH (24x16in = 609.6x406.4mm) and no pageSize', () => {
-    expect(DEFAULT_PARAMS.bedW).toBe(609.6);
-    expect(DEFAULT_PARAMS.bedH).toBe(406.4);
+  it('DEFAULT_PARAMS carries bedW/bedH (600x308mm) and no pageSize', () => {
+    expect(DEFAULT_PARAMS.bedW).toBe(600);
+    expect(DEFAULT_PARAMS.bedH).toBe(308);
     expect(DEFAULT_PARAMS.pageSize).toBeUndefined();
-    expect(A6_PRESET.bedW).toBe(609.6);
-    expect(A6_PRESET.bedH).toBe(406.4);
+    expect(A6_PRESET.bedW).toBe(600);
+    expect(A6_PRESET.bedH).toBe(308);
   });
 
   it('FIELDS gains numeric bedW/bedH metadata and drops pageSize', () => {

@@ -218,7 +218,7 @@ describe('renderPatternSheets — whole-sheet 0/90 auto-rotation', () => {
     const small = buildPatternModel({
       ...DEFAULT_PARAMS,
       maxDraw: 100,
-      frontW: 100, frontH: 80, rearW: 100, rearH: 80,
+      frontW: 80, frontH: 60, rearW: 80, rearH: 60,
     });
     // both orientations need a single bed tile -> tie -> keep un-rotated
     expect(planBedTiles(small.bounds, DEFAULT_PARAMS).count).toBe(1);

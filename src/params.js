@@ -14,7 +14,7 @@ export const DEFAULT_PARAMS = {
   cornerMode: 'clear', bedSize: 220, printOffset: 0.1,
   // Laser cutting bed (mm): master sheets tile into bedW x bedH cells. Distinct from the
   // 3D-print bedSize and the retired A4/A3 printer pageSize. Default 24x16in.
-  bedW: 609.6, bedH: 406.4,
+  bedW: 600, bedH: 308,
   // Corner-gap combs (optional assembly aid): 4 laser-cut comb spacers, one per tube corner,
   // that hold the 2*cornerAllowance corner gap and fold with the bellows. Off by default.
   cornerCombs: false, combToothWidth: 5,
