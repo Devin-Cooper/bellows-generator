@@ -9,7 +9,7 @@ describe('FIELDS — stiffener overhaul params', () => {
     const m = FIELDS.cornerMode;
     expect(m, 'FIELDS.cornerMode missing').toBeDefined();
     expect(m.kind).toBe('select');
-    expect(m.options).toEqual(['clear', 'interlock']); // pointed/alternating removed
+    expect(m.options).toEqual(['clear', 'interlock', 'interlock-full']);
     expect(m.label).toBe('Corner stiffening');
     expect(m.unit).toBe(''); // unitless select
     expect(m.hint.length).toBeGreaterThan(0);

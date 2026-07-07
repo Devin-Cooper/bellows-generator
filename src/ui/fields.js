@@ -66,9 +66,9 @@ export const FIELDS = {
   cornerMode: {
     label: 'Corner stiffening',
     unit: '',
-    hint: 'Clear = open corners (default). Interlock = complementary point-and-notch corners that nest as the tube folds — stiffer corners, whole strips only.',
+    hint: 'Clear = open corners (default). Interlock = complementary point-and-notch corners that nest as the tube folds — stiffer corners, whole strips only. Interlock-full takes the interlock point all the way to the corner fold and fills the corner facet (experimental).',
     kind: 'select',
-    options: ['clear', 'interlock'],
+    options: ['clear', 'interlock', 'interlock-full'],
   },
   glueTab: {
     label: 'Glue tab',

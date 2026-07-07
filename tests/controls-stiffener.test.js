@@ -12,7 +12,7 @@ describe('control panel — stiffener params', () => {
     const sel = el.querySelector('select[data-key="cornerMode"]');
     expect(sel, 'cornerMode select not rendered').not.toBeNull();
     const opts = [...sel.querySelectorAll('option')].map((o) => o.value);
-    expect(opts).toEqual(['clear', 'interlock']);
+    expect(opts).toEqual(['clear', 'interlock', 'interlock-full']);
     const legend = sel.closest('fieldset').querySelector('legend').textContent;
     expect(legend).toBe('Corners, tabs & margins');
   });
