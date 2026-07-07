@@ -291,6 +291,33 @@ export function offsetEdges(points, delta) {
 }
 
 /**
+ * Left and right vertical PROFILES of a rib polygon (CCW), walked as vertex chains from the
+ * top-band edge to the bottom-band edge. Generalizes the old band-edge-min/max read so the tracer
+ * follows the TRUE outline (e.g. an interlock-full hexagon's fold-hug bulge). Returns null when a
+ * band edge has no vertex (caller falls back to the 2-point band-edge stubs) — never crashes.
+ * Byte-identical to the old stubs for 4-vertex trapezoids (extra collinear band-edge vertices are
+ * neither min nor max x and are skipped by the argmin/argmax seeds).
+ */
+function ribProfiles(pts, depth) {
+  const n = pts.length;
+  const isTop = (p) => Math.abs(p.y) < 1e-6;
+  const isBot = (p) => Math.abs(p.y - depth) < 1e-6;
+  const arg = (pred, better) => {
+    let bi = -1;
+    for (let i = 0; i < n; i++) if (pred(pts[i]) && (bi < 0 || better(pts[i].x, pts[bi].x))) bi = i;
+    return bi;
+  };
+  const tL = arg(isTop, (a, b) => a < b), bL = arg(isBot, (a, b) => a < b);
+  const bR = arg(isBot, (a, b) => a > b), tR = arg(isTop, (a, b) => a > b);
+  if (tL < 0 || bL < 0 || bR < 0 || tR < 0) return null;
+  let area2 = 0;
+  for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; area2 += a.x * b.y - b.x * a.y; }
+  const step = area2 >= 0 ? -1 : 1; // CCW -> walk decreasing index along the left/right CW arcs
+  const walk = (from, to) => { const out = []; let i = from; while (true) { out.push(pts[i]); if (i === to) break; i = (i + step + n) % n; } return out; };
+  return { left: walk(tL, bL), right: walk(bR, tR) };
+}
+
+/**
  * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
  * Ribs are left-aligned; the outer boundary follows each rib's own edges. Each rib polygon is
  * a convex 4-vertex shape with exactly two vertices at its top band edge (y=0) and two at its
@@ -321,25 +348,23 @@ function traceColumn(ribs, colX0, datum, params) {
     const yTop = datum + r * pit;
     const y0 = s.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x);
     const yd = s.points.filter((p) => Math.abs(p.y - rib) < 1e-6).map((p) => p.x);
+    const prof = ribProfiles(s.points, rib);
     return {
-      yTop,
-      yBot: yTop + rib,
-      width: s.width,
-      leftTop: Math.min(...y0),
-      rightTop: Math.max(...y0),
-      leftBot: Math.min(...yd),
-      rightBot: Math.max(...yd),
+      yTop, yBot: yTop + rib, width: s.width,
+      leftTop: Math.min(...y0), rightTop: Math.max(...y0),
+      leftBot: Math.min(...yd), rightBot: Math.max(...yd),
+      // profiles for the outer boundary (fallback reproduces the old 2-point band-edge stubs)
+      left: prof ? prof.left : [{ x: Math.min(...y0), y: 0 }, { x: Math.min(...yd), y: rib }],
+      right: prof ? prof.right : [{ x: Math.max(...yd), y: rib }, { x: Math.max(...y0), y: 0 }],
     };
   });
 
   const outer = [];
   for (let r = 0; r < N; r++) {
-    outer.push({ x: colX0 + rows[r].leftTop, y: rows[r].yTop });
-    outer.push({ x: colX0 + rows[r].leftBot, y: rows[r].yBot });
+    for (const p of rows[r].left) outer.push({ x: colX0 + p.x, y: rows[r].yTop + p.y });
   }
   for (let r = N - 1; r >= 0; r--) {
-    outer.push({ x: colX0 + rows[r].rightBot, y: rows[r].yBot });
-    outer.push({ x: colX0 + rows[r].rightTop, y: rows[r].yTop });
+    for (const p of rows[r].right) outer.push({ x: colX0 + p.x, y: rows[r].yTop + p.y });
   }
   const subs = [pathData(offsetEdges(outer, half), true)]; // Z closes the top edge
 
