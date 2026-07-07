@@ -269,29 +269,41 @@ export function ribPolygon(width, depth, ends, reach, setback) {
 export function halfRibPolygon(shape, outer) {
   const depth = shape.yBand.y1 - shape.yBand.y0;
   const hw = shape.width / 2;
-  // Read the full rib's left/right x at each band edge (2 vertices at y=0, 2 at y=depth).
+  // Full rib's left/right x at each band edge (2+ vertices at y=0, 2+ at y=depth).
   const y0 = shape.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x);
   const yd = shape.points.filter((p) => Math.abs(p.y - depth) < 1e-6).map((p) => p.x);
   const leftTop = Math.min(...y0);
   const rightTop = Math.max(...y0);
   const leftBot = Math.min(...yd);
   const rightBot = Math.max(...yd);
+  // Mid-band fold-hug vertices (interlock-full). EMPTY for a 4-vertex trapezoid -> byte-identical.
+  const mid = shape.points.filter((p) => p.y > 1e-6 && p.y < depth - 1e-6);
   if (outer === 'right') {
-    // corner on the RIGHT (x=hw), seam flat on the LEFT (x=0); map the full clear edge x=width
-    // onto the half edge x=hw so the corner-side diagonal is carried at half scale.
+    // corner on the RIGHT (x=hw), seam flat on the LEFT (x=0); carry the corner-side (right) chain
+    // top->bottom through x -> hw + (x - width).
+    const rmid = mid
+      .filter((p) => p.x > shape.width / 2)
+      .sort((a, b) => a.y - b.y)
+      .map((p) => ({ x: hw + (p.x - shape.width), y: p.y }));
     return [
       { x: 0, y: 0 },
       { x: hw + (rightTop - shape.width), y: 0 },
+      ...rmid,
       { x: hw + (rightBot - shape.width), y: depth },
       { x: 0, y: depth },
     ];
   }
-  // outer === 'left': corner on the LEFT (x=0), seam flat on the RIGHT (x=hw); the full clear
-  // edge x=0 maps to the half edge x=0, so the left diagonal x-values carry directly.
+  // outer === 'left': corner on the LEFT (x=0), seam flat on the RIGHT (x=hw); the left diagonal
+  // x-values carry directly; the fold-hug sits on the closing left edge (append it bottom->top).
+  const lmid = mid
+    .filter((p) => p.x < shape.width / 2)
+    .sort((a, b) => b.y - a.y)
+    .map((p) => ({ x: p.x, y: p.y }));
   return [
     { x: leftTop, y: 0 },
     { x: hw, y: 0 },
     { x: hw, y: depth },
     { x: leftBot, y: depth },
+    ...lmid,
   ];
 }
