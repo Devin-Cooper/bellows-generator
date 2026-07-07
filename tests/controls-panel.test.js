@@ -131,6 +131,7 @@ describe('buildControlPanel', () => {
     expect(byKind).toEqual({
       svg: 'Fold-pattern SVG',
       'svg-ribs': 'Rib-ladder SVG',
+      'svg-ribs-cut': 'Rib SVG (cut only)',
       stl: 'Rib STL',
       'stl-full': 'Full ribs STL',
     });

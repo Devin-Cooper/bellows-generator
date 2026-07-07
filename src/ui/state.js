@@ -148,6 +148,11 @@ export function initApp(rootEl) {
       sheets.forEach((svg, i) =>
         downloadBlob(makeSVGBlob(svg), `bellows-ribs-sheet-${i + 1}.svg`)
       );
+    } else if (kind === 'svg-ribs-cut') {
+      const sheets = renderRibMasterSheets(model, params, { cutOnly: true });
+      sheets.forEach((svg, i) =>
+        downloadBlob(makeSVGBlob(svg), `bellows-ribs-cut-sheet-${i + 1}.svg`)
+      );
     } else if (kind === 'stl') {
       triggerDownload(exportRibsSTL(model, params), 'bellows-ribs.stl', 'model/stl');
     } else if (kind === 'stl-full') {

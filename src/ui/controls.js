@@ -9,6 +9,7 @@ const WARNING_MESSAGES = {
 const EXPORT_LABELS = {
   svg: 'Fold-pattern SVG',
   'svg-ribs': 'Rib-ladder SVG',
+  'svg-ribs-cut': 'Rib SVG (cut only)',
   stl: 'Rib STL',
   'stl-full': 'Full ribs STL',
 };
@@ -120,7 +121,7 @@ export function buildControlPanel(opts = {}) {
 
   const exportBar = document.createElement('div');
   exportBar.className = 'export-bar';
-  for (const kind of ['svg', 'svg-ribs', 'stl', 'stl-full']) {
+  for (const kind of ['svg', 'svg-ribs', 'svg-ribs-cut', 'stl', 'stl-full']) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn';
