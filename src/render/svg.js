@@ -610,7 +610,7 @@ function renderCombBlock(block, params, sinks) {
 }
 
 /** One bed sheet: packed lattices (CUT) + spine scores (FOLD_VALLEY) + rib labels & calibration (ENGRAVE). */
-export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
+export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount, opts = {}) {
   const { rib, gap, kerf, bedW, bedH } = params;
   const pitch = rib + gap;
   const f = fmt;
@@ -682,13 +682,18 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
     ? `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_MOUNTAIN}" ` +
       `stroke="${LAYER_COLORS[LAYER.FOLD_MOUNTAIN]}" fill="none">${mountains.join('')}</g>`
     : '';
-  return (
+  const header =
     `<svg xmlns="http://www.w3.org/2000/svg" ` +
     `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
     `data-sheet="${sheetIndex + 1}" data-sheet-count="${sheetCount}" ` +
-    `width="${f(bedW)}mm" height="${f(bedH)}mm" viewBox="0 0 ${f(bedW)} ${f(bedH)}">` +
+    `width="${f(bedW)}mm" height="${f(bedH)}mm" viewBox="0 0 ${f(bedW)} ${f(bedH)}">`;
+  const cutGroup =
     `<g inkscape:groupmode="layer" inkscape:label="${cut}" ` +
-    `stroke="${LAYER_COLORS[cut]}" fill="none">${cutPaths.join('')}</g>` +
+    `stroke="${LAYER_COLORS[cut]}" fill="none">${cutPaths.join('')}</g>`;
+  if (opts.cutOnly) return header + cutGroup + `</svg>`;
+  return (
+    header +
+    cutGroup +
     mountainGroup +
     `<g inkscape:groupmode="layer" inkscape:label="${LAYER.FOLD_VALLEY}" ` +
     `stroke="${LAYER_COLORS[LAYER.FOLD_VALLEY]}" fill="none">${spines.join('')}</g>` +
@@ -705,9 +710,9 @@ export function renderRibSheetSVG(blocks, params, sheetIndex, sheetCount) {
  * a 50mm calibration square. `model` is unused (geometry comes from params).
  * @returns {string[]} one SVG per bed sheet.
  */
-export function renderRibMasterSheets(model, params) {
+export function renderRibMasterSheets(model, params, opts = {}) {
   const sheets = packRibSheets(collectWalls(params), params);
-  return sheets.map((s, i) => renderRibSheetSVG(s.blocks, params, i, sheets.length));
+  return sheets.map((s, i) => renderRibSheetSVG(s.blocks, params, i, sheets.length, opts));
 }
 
 /**
