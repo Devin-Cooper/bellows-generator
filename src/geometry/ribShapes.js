@@ -66,6 +66,12 @@ export function computeRibShapes(params) {
   const { ribCount, pitch } = computeMetrics(params);
   const rib = params.rib;
   const ca = params.cornerAllowance;
+  if ((params.cornerMode ?? 'clear') === 'interlock-full' && ca > rib / 2) {
+    console.warn(
+      `interlock-full: cornerAllowance (${ca}) > rib/2 (${rib / 2}) — corner fill capped at 45° and ` +
+        `short of the fold by ${(ca - rib / 2).toFixed(1)}mm; reduce cornerAllowance or increase rib`
+    );
+  }
   const { width: wFold, height: hFold } = computeFaceFoldWidths(params);
 
   const shapes = [];
@@ -86,17 +92,23 @@ export function computeRibShapes(params) {
       const prevW = foldWidths[Math.max(ribIndex - 1, 0)];
       const nextW = foldWidths[Math.min(ribIndex + 1, ribCount - 1)];
       const taper = (prevW - nextW) / 8;
-      let { reach, setback } = cornerReachSetback(depth, ca, taper);
-      // Degeneracy guards (paper-fold-gated, NOT the old notch clamp): the point fits inside the
-      // corner-fold gap (reach <= cornerAllowance) and the short cut-off edge stays non-negative
-      // (width >= 2*setback), both non-negative.
-      reach = Math.max(0, Math.min(reach, ca));
-      // Cap strictly BELOW width/2 (not at it): a setback of exactly width/2 coincides the two
-      // short-edge vertices into a duplicate-vertex (zero-area-cap) trapezoid. Normal faces
-      // (width >> 2*setback) keep the clamp inactive and are unchanged.
-      setback = Math.max(0, Math.min(setback, width / 2 - SETBACK_MIN_GAP));
-      const ends = cornerModeEnds(params.cornerMode ?? 'clear', wallIndex, ribIndex);
-      const points = ribPolygon(width, depth, ends, reach, setback);
+      const mode = params.cornerMode ?? 'clear';
+      const ends = cornerModeEnds(mode, wallIndex, ribIndex);
+      let points;
+      if (mode === 'interlock-full') {
+        points = ribPolygonFull(width, depth, ends, cornerFullParams(depth, ca, width));
+      } else {
+        let { reach, setback } = cornerReachSetback(depth, ca, taper);
+        // Degeneracy guards (paper-fold-gated, NOT the old notch clamp): the point fits inside the
+        // corner-fold gap (reach <= cornerAllowance) and the short cut-off edge stays non-negative
+        // (width >= 2*setback), both non-negative.
+        reach = Math.max(0, Math.min(reach, ca));
+        // Cap strictly BELOW width/2 (not at it): a setback of exactly width/2 coincides the two
+        // short-edge vertices into a duplicate-vertex (zero-area-cap) trapezoid. Normal faces
+        // (width >> 2*setback) keep the clamp inactive and are unchanged.
+        setback = Math.max(0, Math.min(setback, width / 2 - SETBACK_MIN_GAP));
+        points = ribPolygon(width, depth, ends, reach, setback);
+      }
       shapes.push({
         face,
         wallIndex,
@@ -132,6 +144,51 @@ export function cornerReachSetback(depth, cornerAllowance, taper = 0) {
 }
 
 /**
+ * interlock-full corner parameters: the rib fills the corner facet up to the 45deg miter and
+ * reaches the fold. reach = base (=min(ca,depth/2)); the mating cut-off `setback` is DEEPENED by
+ * CORNER_CLEARANCE (per the CORNER_CLEARANCE note) then clamped; `h` is the fold-hug height, and
+ * the tips sit CORNER_CLEARANCE inside each fold. When h<=0 (ca>=rib/2) the shape collapses to a
+ * trapezoid (see ribPolygonFull). Straight/square only (taper reserved). PROVISIONAL / paper-fold-gated.
+ * @returns {{reach:number,setback:number,h:number,xTipL:number,xTipR:number}}
+ */
+export function cornerFullParams(depth, cornerAllowance, width) {
+  const base = Math.min(cornerAllowance, depth / 2);
+  const cl = CORNER_CLEARANCE;
+  const reach = base;
+  const setback = Math.max(0, Math.min(base + cl, width / 2 - SETBACK_MIN_GAP));
+  const h = Math.max(0, Math.min(depth - setback - reach + cl, depth));
+  return { reach, setback, h, xTipL: cl - reach, xTipR: width + reach - cl };
+}
+
+/**
+ * interlock-full rib polygon. h>0 -> convex CCW HEXAGON with two mid-band fold-hug vertices at y=h
+ * (leading) / y=depth-h (rear); h<=0 -> the 4-vertex trapezoid (same as a fold-reaching interlock).
+ * @param {{orientation:'leading'|'rear'}} ends
+ * @param {{reach:number,setback:number,h:number,xTipL:number,xTipR:number}} p
+ * @returns {{x:number,y:number}[]}
+ */
+export function ribPolygonFull(width, depth, ends, p) {
+  const { setback: s, h, xTipL, xTipR } = p;
+  const leading = ends.orientation === 'leading';
+  if (h <= 0) {
+    const base = leading
+      ? [{ x: xTipL, y: 0 }, { x: xTipR, y: 0 }, { x: width - s, y: depth }, { x: s, y: depth }]
+      : [{ x: s, y: 0 }, { x: width - s, y: 0 }, { x: xTipR, y: depth }, { x: xTipL, y: depth }];
+    return base;
+  }
+  if (leading) {
+    return [
+      { x: xTipL, y: 0 }, { x: xTipR, y: 0 }, { x: xTipR, y: h },
+      { x: width - s, y: depth }, { x: s, y: depth }, { x: xTipL, y: h },
+    ];
+  }
+  return [
+    { x: s, y: 0 }, { x: width - s, y: 0 }, { x: xTipR, y: depth - h },
+    { x: xTipR, y: depth }, { x: xTipL, y: depth }, { x: xTipL, y: depth - h },
+  ];
+}
+
+/**
  * Interlock trapezoid orientation for a rib. p = (wallIndex + ribIndex) % 2:
  *   even -> 'leading' : long/pointing edge on y=0.
  *   odd  -> 'rear'    : long/pointing edge on y=depth.
@@ -145,6 +202,12 @@ export function cornerReachSetback(depth, cornerAllowance, taper = 0) {
  * @returns {{orientation:'leading'|'rear'|null}}
  */
 export function cornerModeEnds(cornerMode, wallIndex, ribIndex) {
+  if (cornerMode === 'interlock-full') {
+    // FLIPPED vs interlock: leading iff (w+r) ODD. The even choice puts the tip on the
+    // intruding side of the corner miter and locks the fold (derivation, adversarial-confirmed).
+    const orientation = ((wallIndex + ribIndex) % 2) === 1 ? 'leading' : 'rear';
+    return { orientation };
+  }
   if (cornerMode === 'interlock') {
     const orientation = ((wallIndex + ribIndex) % 2) === 0 ? 'leading' : 'rear';
     return { orientation };
