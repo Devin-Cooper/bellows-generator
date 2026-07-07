@@ -319,12 +319,13 @@ function ribProfiles(pts, depth) {
 
 /**
  * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
- * Ribs are left-aligned; the outer boundary follows each rib's own edges. Each rib polygon is
- * a convex 4-vertex shape with exactly two vertices at its top band edge (y=0) and two at its
- * bottom band edge (y=depth) — a clear rectangle (straight rails) OR an interlock TRAPEZOID (a
- * single diagonal per rib end, its point on a band edge). The tracer reads the left/right x at
- * each band edge and stitches them into ONE connected loop: down the left side rib-by-rib, then
- * up the right side. Outer grown OUTWARD by kerf/2; per gap the connector tabs sit at the SHARED
+ * Ribs are left-aligned; the outer boundary follows each rib's own edges. Each rib polygon is a
+ * convex CCW shape — a clear rectangle (4 verts), an interlock TRAPEZOID (4 verts, one diagonal
+ * per rib end), or an interlock-full HEXAGON (6 verts: the corner end fills to the 45° miter with
+ * two mid-band fold-hug vertices). The tracer follows each rib's TRUE left/right vertical profile
+ * (ribProfiles — all vertices, not just band-edge min/max) and stitches them into ONE connected
+ * loop: down the left side rib-by-rib, then up the right side. Byte-identical to the old band-edge
+ * read for 4-vertex trapezoids. Outer grown OUTWARD by kerf/2; per gap the connector tabs sit at the SHARED
  * bridgeTabXs positions (same as the 3D STL breakaway bridges): TWO tabs INSET by cornerAllowance
  * from the clamped clear-span edges (a small face collapses to ONE centred tab). The gap is cut
  * across its FULL extent [cutLeft, cutRight] — out to the OUTWARD interlock point tips (x=-reach /

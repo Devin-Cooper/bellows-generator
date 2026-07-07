@@ -7,7 +7,7 @@ import { buildPatternModel } from '../src/geometry/index.js';
 import { LAYER } from '../src/constants.js';
 
 describe('control panel — stiffener params', () => {
-  it('renders a cornerMode select offering clear + interlock in the Corners group', () => {
+  it('renders a cornerMode select offering clear + interlock + interlock-full in the Corners group', () => {
     const { el } = buildControlPanel({ params: { ...DEFAULT_PARAMS } });
     const sel = el.querySelector('select[data-key="cornerMode"]');
     expect(sel, 'cornerMode select not rendered').not.toBeNull();

@@ -8,7 +8,8 @@ export const DEFAULT_PARAMS = {
   focalLength: 150, opticalOffset: 40,
   // Stiffener overhaul: corner-stiffening mode + 3D-print bed/offset.
   // cornerMode: 'clear' (default, open corners) | 'interlock' (complementary point/notch
-  // corners that nest as the tube folds). Legacy 'pointed'/'alternating' migrate to
+  // corners that nest as the tube folds) | 'interlock-full' (interlock taken to the corner fold,
+  // filling the facet to the 45deg miter — experimental/paper-fold-gated). Legacy 'pointed'/'alternating' migrate to
   // 'interlock' in normalizeParams. bedSize = 3D print bed (mm) for column bed-wrap.
   // printOffset = inward 3D offset (mm), opposite sign to laser kerf.
   cornerMode: 'clear', bedSize: 220, printOffset: 0.1,
