@@ -74,6 +74,32 @@ export function computeRibShapes(params) {
   }
   const { width: wFold, height: hFold } = computeFaceFoldWidths(params);
 
+  // interlock-full is taper-BLIND: cornerFullParams/ribPolygonFull take no taper argument, so on a
+  // tapered bellows every corner is drawn as if square (the Wide/Narrow end-angle split is absent).
+  // Warn rather than silently ship wrong corners — tapered interlock-full geometry is not yet derived.
+  const isTapered = Math.max(...wFold) - Math.min(...wFold) > 1e-6 || Math.max(...hFold) - Math.min(...hFold) > 1e-6;
+  if ((params.cornerMode ?? 'clear') === 'interlock-full' && isTapered) {
+    console.warn(
+      `interlock-full corners are NOT taper-aware: on this tapered bellows every corner is drawn ` +
+        `SQUARE (no Wide/Narrow angle split). Use 'interlock' for a tapered bellows, or keep ` +
+        `interlock-full only for straight openings until tapered interlock-full geometry is derived.`
+    );
+  }
+
+  // Degenerate-opening guard: the inset clear width is faceWidth - 2*cornerAllowance, so any fold
+  // width below 2*ca would go NEGATIVE and INVERT the rib polygon (CW winding / self-overlap — the
+  // "garbled points" failure mode) and cascade into halfRibPolygon and the STL cap. Clamp width to
+  // >=0 (below) and warn once here rather than silently emit inverted geometry. The narrowest fold
+  // width is always the front endpoint (the ±step/2 interior wobble never dips below `front`).
+  const minFold = Math.min(...wFold, ...hFold);
+  if (minFold < 2 * ca) {
+    console.warn(
+      `Tapered opening too narrow for cornerAllowance: smallest fold width ${minFold.toFixed(1)}mm < ` +
+        `2*cornerAllowance (${2 * ca}mm) — the inset clear width would go negative; those front ribs ` +
+        `are clamped to 0. Increase the front opening or reduce cornerAllowance (${ca}mm).`
+    );
+  }
+
   const shapes = [];
   for (let wallIndex = 0; wallIndex < WALL_FACES.length; wallIndex++) {
     const face = WALL_FACES[wallIndex];
@@ -82,7 +108,7 @@ export function computeRibShapes(params) {
     const leftCorner = (wallIndex + 3) % 4;
     for (let ribIndex = 0; ribIndex < ribCount; ribIndex++) {
       const faceWidth = foldWidths[ribIndex];       // per-pleat for tapered, constant for straight
-      const width = faceWidth - 2 * ca;             // inset clear width
+      const width = Math.max(0, faceWidth - 2 * ca); // inset clear width (clamped >=0, see guard above)
       const y0 = ribIndex * pitch;                  // SHARED datum — never shifted
       const y1 = y0 + rib;
       const depth = y1 - y0;
