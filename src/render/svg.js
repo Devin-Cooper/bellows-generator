@@ -319,8 +319,10 @@ function ribProfiles(pts, depth) {
 
 /**
  * Trace ONE connected ladder outline for a column of ribs (widths may vary per pleat).
- * Ribs are left-aligned; the outer boundary follows each rib's own edges. Each rib polygon is a
- * convex CCW shape — a clear rectangle (4 verts), an interlock TRAPEZOID (4 verts, one diagonal
+ * Ribs are CENTRED on the column centreline (widthMax/2): a tapered wall's narrower front ribs inset
+ * symmetrically on both sides so the lattice folds flat about its central spine (matching the fabric
+ * layout and the STL). The outer boundary follows each rib's own (centred) edges. Each rib polygon is
+ * a convex CCW shape — a clear rectangle (4 verts), an interlock TRAPEZOID (4 verts, one diagonal
  * per rib end), or an interlock-full HEXAGON (6 verts: the corner end fills to the 45° miter with
  * two mid-band fold-hug vertices). The tracer follows each rib's TRUE left/right vertical profile
  * (ribProfiles — all vertices, not just band-edge min/max) and stitches them into ONE connected
@@ -342,21 +344,32 @@ function traceColumn(ribs, colX0, datum, params) {
   const tabW = Math.max(1, Math.min(2, params.cornerAllowance));
   const N = ribs.length;
 
-  // Read each rib's left/right x at both band edges (y=0 top, y=depth bottom). Works for a clear
-  // rectangle (leftTop=leftBot=0, rightTop=rightBot=width) AND an interlock trapezoid (one edge
-  // carries -reach/width+reach, the other setback/width-setback), so ONE tracer serves both.
+  // A snap-apart ladder folds flat about its central spine, so every rib is CENTRED on the column
+  // centreline (widthMax/2): a tapered wall's narrower front ribs inset symmetrically on BOTH sides,
+  // matching the fabric layout (computeWallRibLayout) and the STL (which centre-align too). Each rib
+  // is shifted right by off = (widthMax - width)/2 from its rib-local frame. widthMax is the widest
+  // pleat (rear), so the column still spans [colX0, colX0+widthMax]; for a straight wall every
+  // width==widthMax so off==0 and this is byte-identical to the old left-aligned trace.
+  const widthMax = Math.max(...ribs.map((s) => s.width));
+  const c0 = widthMax / 2; // column centreline in the local (colX0-relative) frame
+
+  // Read each rib's left/right x at both band edges (y=0 top, y=depth bottom), each shifted by its
+  // centring offset. Works for a clear rectangle (leftTop=leftBot=off, rightTop=rightBot=off+width)
+  // AND an interlock trapezoid (one edge carries off-reach/off+width+reach), so ONE tracer serves both.
   const rows = ribs.map((s, r) => {
     const yTop = datum + r * pit;
-    const y0 = s.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x);
-    const yd = s.points.filter((p) => Math.abs(p.y - rib) < 1e-6).map((p) => p.x);
+    const off = (widthMax - s.width) / 2; // centre this rib on the column centreline
+    const y0 = s.points.filter((p) => Math.abs(p.y) < 1e-6).map((p) => p.x + off);
+    const yd = s.points.filter((p) => Math.abs(p.y - rib) < 1e-6).map((p) => p.x + off);
     const prof = ribProfiles(s.points, rib);
+    const shift = (pts) => pts.map((p) => ({ x: p.x + off, y: p.y }));
     return {
       yTop, yBot: yTop + rib, width: s.width,
       leftTop: Math.min(...y0), rightTop: Math.max(...y0),
       leftBot: Math.min(...yd), rightBot: Math.max(...yd),
       // profiles for the outer boundary (fallback reproduces the old 2-point band-edge stubs)
-      left: prof ? prof.left : [{ x: Math.min(...y0), y: 0 }, { x: Math.min(...yd), y: rib }],
-      right: prof ? prof.right : [{ x: Math.max(...yd), y: rib }, { x: Math.max(...y0), y: 0 }],
+      left: prof ? shift(prof.left) : [{ x: Math.min(...y0), y: 0 }, { x: Math.min(...yd), y: rib }],
+      right: prof ? shift(prof.right) : [{ x: Math.max(...yd), y: rib }, { x: Math.max(...y0), y: 0 }],
     };
   });
 
@@ -378,33 +391,30 @@ function traceColumn(ribs, colX0, datum, params) {
     //    gap-fill must be cut (minus the tab strips) or the tips WELD the ribs together at the fold
     //    points. Clamping the cut to the clear width (as before) left those tip triangles uncut.
     //
-    // 2. The TAB SPAN [tabLo, tabHi] — the clear overlap [0, clearW] clamped to the adjacent edges,
-    //    where the connector tabs must land so they sit on BOTH ribs and OFF the outward points.
-    //      Clear rib:            tabLo=0,       tabHi=clearW      (cutLeft/cutRight identical).
-    //      Interlock INWARD gap: tabLo=setback, tabHi=clearW-setback (== cut extent; setback keeps a tab).
-    //      Interlock OUTWARD gap: tabLo=0, tabHi=clearW — inset ONTO the clear edge, `reach` inside
-    //        the tips, so the tabs are never on a point even though the cut runs out to the tips.
+    // 2. The TAB SPAN [tabLo, tabHi] — the clear overlap, CENTRED on the column centreline c0 so it
+    //    spans [c0-clearW/2, c0+clearW/2], clamped to the adjacent edges, where the connector tabs
+    //    must land so they sit on BOTH ribs and OFF the outward points.
+    //      Clear rib:            tabLo=c0-clearW/2,      tabHi=c0+clearW/2  (cutLeft/cutRight identical).
+    //      Interlock INWARD gap: tabLo=c0-clearW/2+setback, tabHi=c0+clearW/2-setback (setback keeps a tab).
+    //      Interlock OUTWARD gap: tabLo=c0-clearW/2, tabHi=c0+clearW/2 — inset ONTO the clear edge,
+    //        `reach` inside the tips, so the tabs are never on a point even though the cut runs to the tips.
     const clearW = Math.min(rows[i].width, rows[i + 1].width);
     const cutLeft = Math.min(rows[i].leftBot, rows[i + 1].leftTop);
     const cutRight = Math.max(rows[i].rightBot, rows[i + 1].rightTop);
-    const tabLo = Math.max(0, rows[i].leftBot, rows[i + 1].leftTop);
-    const tabHi = Math.min(clearW, rows[i].rightBot, rows[i + 1].rightTop);
+    const tabLo = Math.max(c0 - clearW / 2, rows[i].leftBot, rows[i + 1].leftTop);
+    const tabHi = Math.min(c0 + clearW / 2, rows[i].rightBot, rows[i + 1].rightTop);
     if (tabHi - tabLo <= 0) continue; // no clear overlap (degenerate tiny face) — leave the gap joined
-    // Tab centres INSET by cornerAllowance from the min-clear-width span — the SAME inset the 3D STL
-    // breakaway bridges use (bridgeTabXs(minClearWidth, columnCentre, ca)): TWO tabs normally, ONE
-    // centred tab on a small face. Passing the FULL clearW (not the setback-narrowed span tabHi-tabLo)
-    // restores cross-artifact PARITY of the tab INSET/SEPARATION — the old narrowed span pushed
-    // interlock INWARD-gap tabs ~setback further in than the STL and shifted the 1-vs-2-tab threshold.
-    // Parity scope: (1) the SEPARATION (clearW-2ca) and per-edge inset (ca) now match the STL on EVERY
-    //   bellows; the ABSOLUTE position coincides exactly for STRAIGHT (equal-adjacent-width) faces, and
-    //   on a taper differs on the WIDER rib by (wWide-wNarrow)/2 because this ladder LEFT-aligns ribs at
-    //   colX0 while the STL CENTER-aligns them on xCursor — a layout convention, not a defect (each tab
-    //   still lands on both ribs). (2) The clamp into [tabLo, tabHi] keeps each tab on BOTH ribs: a
-    //   NO-OP when setback<=cornerAllowance (straight + narrowing tapers + clear), ACTIVE only on
-    //   WIDENING tapers (setback>ca) where it pins the tab to the setback edge, trading exactness for
-    //   connectivity (the STL bridge floats off the setback there — a separate pre-existing STL issue).
+    // Tab centres INSET by cornerAllowance from the min-clear-width span, centred on the column
+    // centreline c0 — the SAME inset AND centre the 3D STL breakaway bridges use (bridgeTabXs(
+    // minClearWidth, columnCentre, ca)): TWO tabs normally, ONE centred tab on a small face. Passing
+    // the FULL clearW (not the setback-narrowed span tabHi-tabLo) keeps the tab INSET/SEPARATION in
+    // parity with the STL. Now that BOTH artifacts centre their ribs (this ladder shifts each rib by
+    // (widthMax-width)/2, the STL centres on xCursor), the tab ABSOLUTE positions coincide on EVERY
+    // bellows — straight AND tapered — not just straight faces. The clamp into [tabLo, tabHi] keeps
+    // each tab on BOTH ribs: a NO-OP for straight + narrowing tapers + clear, ACTIVE only on WIDENING
+    // tapers (setback>ca) where it pins the tab to the setback edge, trading exactness for connectivity.
     const ca = params.cornerAllowance;
-    const centres = bridgeTabXs(clearW, clearW / 2, ca)
+    const centres = bridgeTabXs(clearW, c0, ca)
       .map((c) => Math.min(tabHi, Math.max(tabLo, c)))
       .sort((a, b) => a - b);
     // CUT the gap across the FULL extent [cutLeft, cutRight] EVERYWHERE except a tabW-wide strip on
