@@ -1,9 +1,10 @@
 // tests/fixtures/photrio.js
 //
-// PROVENANCE (PROVISIONAL — see coherence fix): numeric fold-widths for PHOTRIO_TAPERED_A
-// were derived from the same two-rib-width construction they gate, NOT yet reconciled
-// against a real Photrio spreadsheet run or a printed paper fold. Reconcile and overwrite
-// these numbers (and retune src/geometry/tapered.js) before relying on the tapered gate.
+// PROVENANCE (PROVISIONAL): fold-widths for PHOTRIO_TAPERED_A are the LINEAR rear->front
+// interpolation (the smooth taper faceFoldWidths now produces). They have NOT been reconciled
+// against a real Photrio spreadsheet run or a printed paper fold — they gate the linear
+// construction against itself. Overwrite with real Photrio/paper numbers before relying on this
+// as a correctness gate. (Superseded the old ±step/2 "two-rib-width" staircase values.)
 //
 // The community "Photrio" tapered-bellows calculator spreadsheet is NOT redistributed here
 // — only the outputs of the two runs below, with their exact inputs, are transcribed.
@@ -30,10 +31,9 @@ export const PHOTRIO_TAPERED_A = {
     type: 'tapered', frontW: 100, frontH: 80, rearW: 200, rearH: 150,
     maxDraw: 250, ribCount: 5,
   },
-  // Two-rib-width construction: interior ribs alternate web (mountain) / hinge (valley)
-  // about the linear baseline, so the sequence is NOT a single monotonic interpolation.
-  width: [200, 162.5, 162.5, 112.5, 100],
-  height: [150, 123.75, 123.75, 88.75, 80],
+  // Smooth linear taper rear->front: width step (200-100)/4 = 25, height step (150-80)/4 = 17.5.
+  width: [200, 175, 150, 125, 100],
+  height: [150, 132.5, 115, 97.5, 80],
 };
 
 export const PHOTRIO_FIXTURES = [PHOTRIO_STRAIGHT_DEGENERATE, PHOTRIO_TAPERED_A];

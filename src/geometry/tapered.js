@@ -5,12 +5,19 @@ import { computeMetrics } from './metrics.js';
 import { computeRibShapes, halfRibPolygon } from './ribShapes.js';
 
 /**
- * Per-face fold-width sequence (rear -> front) for a tapered face.
- * Two-rib-width construction: interior ribs alternate web (mountain, even index,
- * bulged outward) and hinge (valley, odd index, tucked inward) by half a taper step,
- * so the sequence is NOT a single monotonic interpolation. Endpoints are clamped to
- * the true opening dimensions (mounting frames, not folds). Empirically gated against
- * the Photrio fixtures + a printed paper fold — not a proven closed-form.
+ * Per-face fold-width sequence (rear -> front) for a tapered face: a smooth LINEAR interpolation
+ * from the rear opening to the front opening, one width per pleat.
+ *
+ * HISTORY: this used to add a ±step/2 "two-rib-width" web/hinge wobble on alternate interior pleats,
+ * which collapsed adjacent pleats into equal-width PAIRS (a visible staircase, not a smooth taper).
+ * That wobble tied its amplitude to the taper RATE (step) rather than to the pleat geometry, and its
+ * "even index = web = mountain" justification was ill-posed: a rib is one rigid loop, so a single
+ * per-rib scalar width cannot encode a mountain/valley alternation that flips per WALL (the fold M/V
+ * parity is (pleat+column); the interlock parity is (wall+rib)). It was only ever gated by a
+ * SELF-DERIVED fixture (tests/fixtures/photrio.js), never a real Photrio run or paper fold. If a
+ * genuine mountain-ring/valley-ring diameter alternation turns out to be real, re-derive it from the
+ * nested-frustum fold-vertex projection (two interleaved MONOTONE sequences with a geometry-based
+ * amplitude), NOT a ±step/2 wobble about the linear mean.
  * @param {number} rear
  * @param {number} front
  * @param {number} N  pleat/gap count (= ribCount - 1)
@@ -20,13 +27,7 @@ function faceFoldWidths(rear, front, N) {
   if (N <= 0) return [rear];
   const step = (rear - front) / N;
   const out = [];
-  for (let i = 0; i <= N; i++) {
-    if (i === 0) { out.push(rear); continue; }
-    if (i === N) { out.push(front); continue; }
-    const base = rear - step * i;
-    const offset = (i % 2 === 0) ? step / 2 : -step / 2;
-    out.push(base + offset);
-  }
+  for (let i = 0; i <= N; i++) out.push(rear - step * i);
   return out;
 }
 
@@ -106,7 +107,10 @@ export function buildTaperedPattern(params) {
     }
   }
 
-  // fold lines at gap centers: M/V alternates along draw AND inverts across faces
+  // fold lines at gap centers: transverse creases (M/V by (pleat+column) parity) + a 45deg corner
+  // miter at each internal face boundary. Mirrors straight.js's proven construction (the tapered
+  // path used to draw a one-sided, hardcoded-VALLEY, half-gap edge-tracing stub).
+  const reach = Math.min(p.cornerAllowance, pit / 2); // 45deg crease, rise 2*reach <= pitch
   for (let i = 0; i < N; i++) {
     const y = p.endMargin + i * pit + p.rib + p.gap / 2;
     for (let c = 0; c < faceKinds.length; c++) {
@@ -116,12 +120,22 @@ export function buildTaperedPattern(params) {
         type, layer: type, closed: false,
         points: [{ x: centers[c] - half, y }, { x: centers[c] + half, y }],
       });
-      // variable-angle corner-miter diagonal at each face boundary
+      // 45deg corner-miter diagonal at each internal boundary (cols 0..3 -> the 4 tube corners),
+      // centred on the per-pleat corner (midpoint of the two facing face edges at this crease) and
+      // sharing the crease's M/V + tilt parity — corner index == column index c here, so straight.js's
+      // corner rule mountain=((i+c)%2==0) reuses `type`. NOTE (provisional / paper-fold-gated): the
+      // corner line is seated at the rear-based boundary; a true taper's corner fold SLANTS rear->front
+      // as the faces recede — that refinement is deferred to a printed-fold gate.
       if (c < faceKinds.length - 1) {
-        const edgeX = centers[c] + colFold(c, i) / 2;
+        const halfNext = ((colFold(c + 1, i) + colFold(c + 1, i + 1)) / 2) / 2;
+        const cornerMid = ((centers[c] + half) + (centers[c + 1] - halfNext)) / 2;
+        const dir = type === LAYER.FOLD_MOUNTAIN ? 1 : -1;
         segments.push({
-          type: LAYER.FOLD_VALLEY, layer: LAYER.FOLD_VALLEY, closed: false,
-          points: [{ x: edgeX, y: y - p.gap / 2 }, { x: centers[c] + half, y }],
+          type, layer: type, closed: false,
+          points: [
+            { x: cornerMid - reach, y: y - dir * reach },
+            { x: cornerMid + reach, y: y + dir * reach },
+          ],
         });
       }
     }

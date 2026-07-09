@@ -19,14 +19,16 @@ describe('computeFaceFoldWidths vs Photrio fixtures', () => {
     });
   }
 
-  it('is not a plain monotonic interpolation for a real taper', () => {
+  it('is a smooth linear rear->front interpolation (no ±step/2 staircase)', () => {
     const { width } = computeFaceFoldWidths({
       ...DEFAULT_PARAMS, type: 'tapered',
       rearW: 200, frontW: 100, rearH: 150, frontH: 80, ribCount: 5,
     });
     const baseline = width.map((_, i) => 200 - (100 / 4) * i);
-    // at least one interior rib departs from the straight-line baseline
-    expect(width.some((w, i) => Math.abs(w - baseline[i]) > 1e-6)).toBe(true);
+    // every rib sits exactly on the straight-line baseline (smooth taper, no equal-width pairs)
+    width.forEach((w, i) => expect(approx(w, baseline[i])).toBe(true));
+    // strictly decreasing (no two adjacent pleats share a width)
+    for (let i = 1; i < width.length; i++) expect(width[i]).toBeLessThan(width[i - 1]);
   });
 });
 
@@ -53,6 +55,29 @@ describe('buildTaperedPattern', () => {
     expect(model.bounds.w).toBeCloseTo(2 * 200 + 2 * 150 + DEFAULT_PARAMS.glueTab, 6);
     expect(model.seamFaceIndex).toBe(4);
     expect(model.metrics.ribCount).toBe(5);
+  });
+
+  it('draws proper 45deg corner miters: both M and V, symmetric, reach=min(ca,pitch/2)', () => {
+    const model = buildTaperedPattern(TAPER);
+    const p = { ...TAPER };
+    const pitch = p.rib + p.gap;
+    const reach = Math.min(p.cornerAllowance, pitch / 2);
+    const isFold = (s) => s.type === LAYER.FOLD_MOUNTAIN || s.type === LAYER.FOLD_VALLEY;
+    // corner miters are the DIAGONAL fold segments (transverse creases are horizontal)
+    const miters = model.segments.filter(
+      (s) => isFold(s) && !s.closed && s.points.length === 2 && Math.abs(s.points[0].y - s.points[1].y) > 1e-6
+    );
+    expect(miters.length).toBeGreaterThan(0);
+    // NOT all valley (the old bug hardcoded FOLD_VALLEY)
+    expect(miters.some((s) => s.type === LAYER.FOLD_MOUNTAIN)).toBe(true);
+    expect(miters.some((s) => s.type === LAYER.FOLD_VALLEY)).toBe(true);
+    // each miter is a symmetric 45deg crease: |dx| == |dy| == 2*reach
+    for (const s of miters) {
+      const dx = Math.abs(s.points[1].x - s.points[0].x);
+      const dy = Math.abs(s.points[1].y - s.points[0].y);
+      expect(approx(dx, dy)).toBe(true);
+      expect(approx(dx, 2 * reach)).toBe(true);
+    }
   });
 
   it('is reached via buildPatternModel type dispatch', () => {
