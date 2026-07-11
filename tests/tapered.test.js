@@ -63,9 +63,13 @@ describe('buildTaperedPattern', () => {
     const pitch = p.rib + p.gap;
     const reach = Math.min(p.cornerAllowance, pitch / 2);
     const isFold = (s) => s.type === LAYER.FOLD_MOUNTAIN || s.type === LAYER.FOLD_VALLEY;
-    // corner miters are the DIAGONAL fold segments (transverse creases are horizontal)
+    // corner miters are the SHORT diagonal fold segments: transverse creases are horizontal, and the
+    // slanting longitudinal corner folds span the whole pleated length — miters span exactly 2*reach.
     const miters = model.segments.filter(
-      (s) => isFold(s) && !s.closed && s.points.length === 2 && Math.abs(s.points[0].y - s.points[1].y) > 1e-6
+      (s) =>
+        isFold(s) && !s.closed && s.points.length === 2 &&
+        Math.abs(s.points[0].y - s.points[1].y) > 1e-6 &&
+        Math.abs(s.points[0].y - s.points[1].y) <= pitch + 1e-6
     );
     expect(miters.length).toBeGreaterThan(0);
     // NOT all valley (the old bug hardcoded FOLD_VALLEY)
