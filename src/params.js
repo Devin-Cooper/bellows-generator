@@ -2,7 +2,7 @@ export const DEFAULT_PARAMS = {
   type: 'straight',
   frontW: 150, frontH: 150, rearW: 150, rearH: 150,
   maxDraw: 300, drawFactor: 1.2,
-  rib: 12, gap: 2.5, ribCount: null, cornerAllowance: 15,
+  rib: 12, gap: 2.5, ribCount: null, cornerAllowance: 2,
   glueTab: 10, endMargin: 35,
   fabricThickness: 0.5, ribThickness: 0.4, kerf: 0.15,
   focalLength: 150, opticalOffset: 40,

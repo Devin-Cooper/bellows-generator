@@ -5,9 +5,10 @@ import { computeMetrics } from '../src/geometry/metrics.js';
 import { computeFaceFoldWidths } from '../src/geometry/tapered.js';
 import { DEFAULT_PARAMS } from '../src/params.js';
 
-const A6 = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115, rearW: 160, rearH: 115 };
+// Pin the pre-v0.2.1 15mm corner allowance: these clear-width assertions hard-code faceDim − 2·15.
+const A6 = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115, rearW: 160, rearH: 115, cornerAllowance: 15 };
 const TAPERED = {
-  ...DEFAULT_PARAMS, type: 'tapered',
+  ...DEFAULT_PARAMS, type: 'tapered', cornerAllowance: 15,
   rearW: 200, frontW: 100, rearH: 200, frontH: 100,
 };
 
@@ -28,8 +29,8 @@ describe('computeRibShapes — clear mode', () => {
     expect(new Set(shapes.map((s) => s.wallIndex))).toEqual(new Set([0, 1, 2, 3]));
   });
 
-  it('uses the inset clear width faceWidth - 2*cornerAllowance (straight default 120)', () => {
-    const shapes = computeRibShapes({ ...DEFAULT_PARAMS });
+  it('uses the inset clear width faceWidth - 2*cornerAllowance (150, ca 15 -> 120)', () => {
+    const shapes = computeRibShapes({ ...DEFAULT_PARAMS, cornerAllowance: 15 });
     for (const s of shapes) expect(s.width).toBeCloseTo(150 - 2 * 15, 6); // 120
   });
 

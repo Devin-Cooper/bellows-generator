@@ -30,6 +30,26 @@ export function formatReadouts(metrics) {
       value: `${metrics.flatSheet.w.toFixed(0)} × ${metrics.flatSheet.h.toFixed(0)} mm`,
     },
   ];
+  // Stiffened-opening rows (the rigid frame the openings actually collapse to once the corner
+  // allowance is inset) — placed up top so the shrink is never a surprise. Guarded by presence so
+  // the hand-built-metrics unit tests are unaffected. Front/rear collapse to one row when equal
+  // (straight); a non-positive opening (corner allowance too large for the face) is flagged warn.
+  if (metrics.stiffenedOpening) {
+    const { front, rear } = metrics.stiffenedOpening;
+    const fmt = (o) => `${o.w.toFixed(0)} × ${o.h.toFixed(0)} mm`;
+    const bad = (o) => o.w <= 0 || o.h <= 0;
+    const openingRows = [];
+    if (front.w === rear.w && front.h === rear.h) {
+      openingRows.push({ label: 'Stiffened opening', value: fmt(front), warn: bad(front) });
+    } else {
+      openingRows.push({ label: 'Stiffened opening (front)', value: fmt(front), warn: bad(front) });
+      openingRows.push({ label: 'Stiffened opening (rear)', value: fmt(rear), warn: bad(rear) });
+    }
+    if (metrics.cornerGap != null) {
+      openingRows.push({ label: 'Corner gap (rib-to-rib)', value: `${metrics.cornerGap.toFixed(1)} mm` });
+    }
+    rows.unshift(...openingRows);
+  }
   for (const w of metrics.warnings) {
     if (w === '>20mm collapse') continue; // already flagged on the Collapsed thickness row
     const msg = WARNING_MESSAGES[w] || w;

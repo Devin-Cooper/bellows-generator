@@ -61,4 +61,28 @@ describe('computeMetrics', () => {
     const m = computeMetrics({ ...FULL, kerf: 3 });
     expect(m.warnings).toContain('kerf>=gap');
   });
+
+  it('derives the stiffened opening (face − 2·CA) and rib-to-rib corner gap (2·CA)', () => {
+    const m = computeMetrics({ ...FULL, frontW: 150, frontH: 150, cornerAllowance: 15 });
+    // 150 − 2·15 = 120; front == rear for a straight bellows.
+    expect(m.stiffenedOpening.front).toEqual({ w: 120, h: 120 });
+    expect(m.stiffenedOpening.rear).toEqual({ w: 120, h: 120 });
+    expect(m.cornerGap).toBe(30);
+  });
+
+  it('keeps the stiffened opening close to the face with the small default-style allowance', () => {
+    // Regression for the "100×100 opening prints as ~70×70" report: a small corner allowance keeps
+    // the rigid frame near the nominal face and the corner gap at a few mm.
+    const m = computeMetrics({ ...FULL, frontW: 100, frontH: 100, cornerAllowance: 2 });
+    expect(m.stiffenedOpening.front).toEqual({ w: 96, h: 96 });
+    expect(m.cornerGap).toBe(4);
+  });
+
+  it('splits front/rear stiffened openings for a tapered bellows', () => {
+    const m = computeMetrics({
+      ...FULL, type: 'tapered', frontW: 100, frontH: 100, rearW: 60, rearH: 60, cornerAllowance: 2,
+    });
+    expect(m.stiffenedOpening.front).toEqual({ w: 96, h: 96 });
+    expect(m.stiffenedOpening.rear).toEqual({ w: 56, h: 56 });
+  });
 });

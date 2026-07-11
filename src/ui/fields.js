@@ -61,7 +61,9 @@ export const FIELDS = {
   cornerAllowance: {
     label: 'Corner allowance (per side)',
     unit: 'mm',
-    hint: 'Unstiffened corner zone so the 45° fold can form.',
+    hint: 'Unstiffened corner zone so the 45° fold can form. Applied to BOTH ends of every face, ' +
+      'so it shrinks the stiffened opening by 2× (a 100mm face → 100−2·CA rib) and sets the rib-to-' +
+      'rib corner gap to 2·CA. Keep it small (a few mm); the fold only needs ≈ pitch/2.',
   },
   cornerMode: {
     label: 'Corner stiffening',

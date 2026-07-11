@@ -103,4 +103,33 @@ describe('buildFoldModel', () => {
       expect(isOrientedManifold(m.indices)).toBe(true);
     }
   });
+
+  // Regression: the octagon corner chamfer must represent the folded corner crease (small), NOT the
+  // full unstiffened corner allowance — otherwise a big corner allowance collapses the preview
+  // cross-section toward the stiffened-rib width and a 100×100 tube reads as ~70×70. Ring-0 (rib
+  // ring, no bulge) vertices 0 and 1 are the two ends of the −y flat facet.
+  const facetWidth = (m) => m.positions[1 * 3] - m.positions[0 * 3]; // x1 − x0 on ring 0
+  const bboxWidth = (m) => {
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < 8 * 3; i += 3) { min = Math.min(min, m.positions[i]); max = Math.max(max, m.positions[i]); }
+    return max - min;
+  };
+
+  it('keeps the octagon bounding box at the full front opening regardless of corner allowance', () => {
+    for (const ca of [2, 15, 40]) {
+      const m = buildFoldModel({ ...DEFAULT_PARAMS, frontW: 100, frontH: 100, cornerAllowance: ca }, 1);
+      expect(bboxWidth(m)).toBeCloseTo(100, 6);
+    }
+  });
+
+  it('caps the corner chamfer at pitch/2 so a large allowance no longer shrinks the facet to the rib width', () => {
+    const p = computeMetrics({ ...DEFAULT_PARAMS, frontW: 100, frontH: 100 });
+    // Small allowance: facet ≈ full opening minus a couple mm.
+    const small = buildFoldModel({ ...DEFAULT_PARAMS, frontW: 100, frontH: 100, cornerAllowance: 2 }, 1);
+    expect(facetWidth(small)).toBeCloseTo(100 - 2 * 2, 6); // 96
+    // Large allowance: chamfer is capped at pitch/2, NOT the old 100 − 2·15 = 70.
+    const large = buildFoldModel({ ...DEFAULT_PARAMS, frontW: 100, frontH: 100, cornerAllowance: 15 }, 1);
+    expect(facetWidth(large)).toBeCloseTo(100 - 2 * (p.pitch / 2), 6); // 85.5
+    expect(facetWidth(large)).toBeGreaterThan(70);
+  });
 });

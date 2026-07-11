@@ -72,7 +72,8 @@ function uncutTabs(ivals, lo, hi, minW) {
 }
 
 describe('renderRibMasterSheets interlock — connector tabs stay within the clear width', () => {
-  const p = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'interlock' });
+  // Pin the pre-v0.2.1 15mm corner allowance (comfortable interlock tab gap), independent of default.
+  const p = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'interlock', cornerAllowance: 15 });
   const model = buildPatternModel(p);
   const sheets = renderRibMasterSheets(model, p);
   const paths = ladderPaths(sheets);

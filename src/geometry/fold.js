@@ -31,8 +31,14 @@ export function buildFoldModel(params, t) {
   // Cross-section half extents; the front opening drives the straight preview.
   const a = params.frontW / 2;
   const b = params.frontH / 2;
-  // Clamp miter to 90% of the half-extent so octagon vertices don't cross the centre line.
-  const miter = Math.min(params.cornerAllowance, a * 0.9, b * 0.9);
+  // Corner chamfer of the octagon cross-section. This is a VISUAL softening of the folded corner,
+  // NOT the full unstiffened corner-allowance zone: the assembled corner is a near-sharp fold whose
+  // 45° miter crease only reaches `min(cornerAllowance, pitch/2)` into each face (the same clamp the
+  // flat pattern uses — see straight.js/tapered.js `reach`). Capping the chamfer there keeps the
+  // preview opening close to the true frontW×frontH: a large corner allowance can no longer shrink
+  // the facet toward the (much smaller) stiffened-rib width. The a*0.9/b*0.9 term is the pre-existing
+  // safety clamp so octagon vertices never cross the centre line on tiny openings.
+  const miter = Math.min(params.cornerAllowance, metrics.pitch / 2, a * 0.9, b * 0.9);
 
   // Fixed material half-pitch (slant); radial peak collapses to 0 at full draw.
   const slant = extended / segCount;

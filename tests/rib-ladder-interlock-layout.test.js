@@ -17,7 +17,8 @@ import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
 import { cornerReachSetback } from '../src/geometry/ribShapes.js';
 
 function ladder(overrides = {}) {
-  const params = normalizeParams({ ...DEFAULT_PARAMS, ...overrides });
+  // Pin the pre-v0.2.1 15mm corner allowance (comfortable interlock-reach gap); overrides still win.
+  const params = normalizeParams({ ...DEFAULT_PARAMS, cornerAllowance: 15, ...overrides });
   const model = { metrics: computeMetrics(params) };
   return { svg: renderRibLadderSVG(model, params), params, metrics: model.metrics };
 }

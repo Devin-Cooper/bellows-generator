@@ -4,7 +4,9 @@ import { buildPatternModel } from '../src/geometry/index.js';
 import { DEFAULT_PARAMS } from '../src/params.js';
 import { LAYER } from '../src/constants.js';
 
-const A6 = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115 };
+// Pin the pre-v0.2.1 corner allowance: these fold/rib-span assertions were written for the 15mm
+// regime, independent of the (now small) default.
+const A6 = { ...DEFAULT_PARAMS, frontW: 160, frontH: 115, cornerAllowance: 15 };
 
 const approx = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 

@@ -12,7 +12,9 @@ describe('DEFAULT_PARAMS', () => {
     expect(DEFAULT_PARAMS.rib).toBe(12);
     expect(DEFAULT_PARAMS.gap).toBe(2.5);
     expect(DEFAULT_PARAMS.ribCount).toBeNull();
-    expect(DEFAULT_PARAMS.cornerAllowance).toBe(15);
+    // Small per-side corner allowance: keeps the rib-to-rib corner gap (2·CA) at a few mm so the
+    // stiffened opening stays close to the nominal face (a 100mm face → 96mm rib, 4mm corner gap).
+    expect(DEFAULT_PARAMS.cornerAllowance).toBe(2);
     expect(DEFAULT_PARAMS.glueTab).toBe(10);
     expect(DEFAULT_PARAMS.endMargin).toBe(35);
     expect(DEFAULT_PARAMS.bedW).toBe(600);

@@ -5,10 +5,12 @@ import { computeMetrics } from '../src/geometry/metrics.js';
 import { computeFaceFoldWidths } from '../src/geometry/tapered.js';
 import { normalizeParams, DEFAULT_PARAMS } from '../src/params.js';
 
-const P = normalizeParams({ ...DEFAULT_PARAMS });                 // square 150, ca 15
-const IL = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'interlock' });
+// Pin the pre-v0.2.1 15mm corner allowance: the corner-gap (2·ca) and interlock-nesting assertions
+// were written for that regime; the default is now small.
+const P = normalizeParams({ ...DEFAULT_PARAMS, cornerAllowance: 15 });   // square 150, ca 15
+const IL = normalizeParams({ ...DEFAULT_PARAMS, cornerMode: 'interlock', cornerAllowance: 15 });
 const TP = normalizeParams({
-  ...DEFAULT_PARAMS, type: 'tapered',
+  ...DEFAULT_PARAMS, type: 'tapered', cornerAllowance: 15,
   rearW: 200, frontW: 100, rearH: 150, frontH: 80, ribCount: 5,
 });
 
